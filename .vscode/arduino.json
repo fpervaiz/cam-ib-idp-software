@@ -2,5 +2,6 @@
     "board": "arduino:megaavr:uno2018",
     "configuration": "mode=on",
     "programmer": "AVR ISP",
-    "sketch": "main\\main.ino"
+    "sketch": "main\\main.ino",
+    "port": "COM4"
 }

@@ -25,6 +25,12 @@ Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
 unsigned long prev_move_indicator_millis = 0;
 
 int cmd_move = 0; // 0 = stop, 1 = forward; 2 = backward; 3 = pivot left; 4 = pivot right; 5 = rotate left; 6 = rotate right
+long time = 0;
+long debounce = 200;
+int state = HIGH;
+int hitWall;
+int previousHitWall = LOW;
+
 
 // FUNCTIONS
 
@@ -82,6 +88,7 @@ void driveMotors()
     R_MOTOR->run(RELEASE);
     break;
   case 1: // Forward
+
     break;
   case 2: // Backward
     break;
@@ -115,4 +122,11 @@ void loop()
   }
 
   driveMotors();
+  
+  hitWall = digitalRead(microPin);
+  
+  if (hitWall == HIGH && previous == LOW && millis() - time > debounce){
+    hitAWall(); }
+
+  previousHitWall = hitWall;
 }

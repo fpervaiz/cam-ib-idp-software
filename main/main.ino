@@ -122,11 +122,14 @@ void loop()
   }
 
   driveMotors();
-  
+
+  // Check if hit wall, reverse and swivle left if so  
   hitWall = digitalRead(microPin);
   
   if (hitWall == HIGH && previous == LOW && millis() - time > debounce){
-    hitAWall(); }
+    cmd_move = 2; driveMotors;
+    cmd_move = 3; driveMotors;
+    cmd_move = 1; }
 
   previousHitWall = hitWall;
 }

@@ -5,7 +5,9 @@
 #define IRPin A7
 #define model 1080
 // Create variable to store the distance:
-int distance_cm;
+int analogread;
+int voltage;
+int distance;
 /* Model :
   GP2Y0A02YK0F --> 20150
   GP2Y0A21YK0F --> 1080
@@ -14,18 +16,18 @@ int distance_cm;
 */
 
 // Create a new instance of the SharpIR class:
-SharpIR mySensor = SharpIR(IRPin, model);
+//SharpIR mySensor = SharpIR(IRPin, model);
 void setup() {
-  // Begin serial communication at a baudrate of 9600:
   Serial.begin(9600);
-  //pinMode (IRPin, INPUT);
+  pinMode (IRPin, INPUT);
 }
+
 void loop() {
-  // Get a distance measurement and store it as distance_cm:
-  distance_cm = mySensor.getDistance();
-  // Print the measured distance to the serial monitor:
+  analogread = analogRead(IRPin);
+  voltage = analogread*5/1024;
+  distance = 27.726*pow(voltage, -1.2045);
   Serial.print("Mean distance: ");
-  Serial.print(distance_cm);
+  Serial.print(voltage);
   Serial.println(" cm");
   delay(1000);
-  }
+}

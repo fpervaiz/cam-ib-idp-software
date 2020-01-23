@@ -2,7 +2,7 @@
 // Include the library:
 #include <SharpIR.h>
 // Define model and input pin:
-#define IRPin A0
+#define IRPin A7
 #define model 1080
 // Create variable to store the distance:
 int distance_cm;
@@ -12,11 +12,13 @@ int distance_cm;
   GP2Y0A710K0F --> 100500
   GP2YA41SK0F --> 430
 */
+
 // Create a new instance of the SharpIR class:
 SharpIR mySensor = SharpIR(IRPin, model);
 void setup() {
   // Begin serial communication at a baudrate of 9600:
   Serial.begin(9600);
+  //pinMode (IRPin, INPUT);
 }
 void loop() {
   // Get a distance measurement and store it as distance_cm:

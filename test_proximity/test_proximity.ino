@@ -5,9 +5,9 @@
 #define IRPin A7
 #define model 1080
 // Create variable to store the distance:
-int analogread;
-int voltage;
-int distance;
+double analogread;
+double voltage;
+double distance;
 /* Model :
   GP2Y0A02YK0F --> 20150
   GP2Y0A21YK0F --> 1080

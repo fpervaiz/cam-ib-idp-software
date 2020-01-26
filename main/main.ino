@@ -20,11 +20,26 @@
 #define port_motor_left 1
 #define port_motor_right 2
 
+#define const_motor_full_speed 255
+#define const_motor_half_speed 128
+
 #define const_move_indicator_period 250
 
-#define const_sens_optor_threshold 500
+#define const_sens_optor_l_threshold 500
+#define const_sens_optor_c_threshold 250
+#define const_sens_optor_r_threshold 350
 #define const_sens_optor_working_minimum 10
 #define const_sens_optor_working_maximum 1000
+
+// Movement command definitions
+
+#define STOP 0
+#define FWRD 1
+#define RVRS 2
+#define PVTL 3
+#define PVTR 4
+#define ROTL 5
+#define ROTR 6
 
 // VARIABLES
 
@@ -81,41 +96,48 @@ void setupOptors()
   int r3 = analogRead(pin_sens_optor_r);
   bool failure = false;
 
-  if (r1 > const_sens_optor_working_maximum || r1 < const_sens_optor_working_minimum) {
+  if (r1 > const_sens_optor_working_maximum || r1 < const_sens_optor_working_minimum)
+  {
     // Left optoreflector issue
     failure = true;
   }
-  if (r2 > const_sens_optor_working_maximum || r2 < const_sens_optor_working_minimum) {
+  if (r2 > const_sens_optor_working_maximum || r2 < const_sens_optor_working_minimum)
+  {
     // Centre optoreflector issue
     failure = true;
   }
-  if (r3 > const_sens_optor_working_maximum || r3 < const_sens_optor_working_minimum) {
+  if (r3 > const_sens_optor_working_maximum || r3 < const_sens_optor_working_minimum)
+  {
     // Right optoreflector issue
     failure = true;
   }
 
-  if (failure) {
+  if (failure)
+  {
     Serial.println("Optoreflector readings outside working range!");
     Serial.print(r1);
     Serial.print(" ");
     Serial.print(r2);
     Serial.print(" ");
     Serial.println(r3);
-    
+
     Serial.println("EXECUTION HALTED");
-    while (true) {
+    while (true)
+    {
       delay(10000);
     }
   }
 }
 
-void setupBtns() {
+void setupBtns()
+{
   pinMode(pin_btn_start, INPUT_PULLUP);
 }
 
 // Logic
 
-bool startBtnPressed() {
+bool startBtnPressed()
+{
   return !digitalRead(pin_btn_start);
 }
 
@@ -190,44 +212,90 @@ void driveMotors()
   }
 }
 
-bool optoIsDark(int opto_pin)
+bool optoIsDark(int opto_pin, int threshold)
 {
   // Serial.println(analogRead(opto_pin));
-  return analogRead(opto_pin) < const_sens_optor_threshold;
+  return analogRead(opto_pin) < threshold;
+
 }
 
-/*void lineFollow()
+void lineFollow()
 {
-  if (optoIsDark(pin_sens_optor_l) && !optoIsDark(pin_sens_optor_l) && optoIsDark(pin_sens_optor_l))
-  {
-    // On line - continue straight
-    cmd_move = 1;
-  }
-  else if ()
-  {
-    // Move left
-  }
-  else if ()
-  {
-    // Move right
-  }
-  else if ()
-  {
-    // Stop
-  }
-  
-  
-}*/
+  bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
+  bool b2 = optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold);
+  bool b3 = optoIsDark(pin_sens_optor_r, const_sens_optor_r_threshold);
 
-void simpleLineFollow()
-{
-  if (optoIsDark(pin_sens_optor_l))
+  if (b1 && b2 && b3)
   {
-    cmd_move = 4;
+    // B B B - lost
+    cmd_move = STOP;
+    Serial.println("Lost.");
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // B B W - pivot hard right
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTR;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // B W B - straight - on line
+    cmd_speed = const_motor_full_speed;
+    cmd_move = FWRD;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // B W W - pivot right
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTR;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // W B B - pivot hard left
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTL;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // W B W - junction - decision - to be implemented
+    cmd_speed = const_motor_half_speed;
+    cmd_move = FWRD;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // W W B - pivot left
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTL;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // W W W - junction - decision
+    cmd_speed = const_motor_full_speed;
+    cmd_move = STOP;
   }
   else
   {
-    cmd_move = 3;
+    // Undefined reading set
+    Serial.println("Undefined optoreflector state:");
+    Serial.print(b1);
+    Serial.print(" ");
+    Serial.print(b2);
+    Serial.print(" ");
+    Serial.println(b3);
+  }
+}
+
+void simpleLineFollow()
+{
+  if (optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold))
+  {
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTL;
+  }
+  else
+  {
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTR;
   }
 }
 
@@ -243,7 +311,8 @@ void setup()
 
   // Wait till button pressed to start
   Serial.println("Waiting for start button push...");
-  while (!startBtnPressed()) {
+  while (!startBtnPressed())
+  {
     delay(100);
   }
 
@@ -259,8 +328,8 @@ void loop()
     toggleMoveIndicator();
   }
 
-  simpleLineFollow();
-
+  //simpleLineFollow();
+  lineFollow();
   driveMotors();
-  delay(100);
+  delay(10);
 }

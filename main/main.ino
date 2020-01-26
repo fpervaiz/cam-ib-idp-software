@@ -9,7 +9,6 @@
 #define pin_sens_ultrasound_trigger 10
 #define pin_sens_ultrasound_echo 13
 
-// To be replaced with comparators and digital in
 #define pin_sens_optor_l A0
 #define pin_sens_optor_c A1
 #define pin_sens_optor_r A2
@@ -116,18 +115,18 @@ void setupBtns() {
 
 // Logic
 
-bool start_btn_pressed() {
+bool startBtnPressed() {
   return !digitalRead(pin_btn_start);
 }
 
-bool is_moving()
+bool isMoving()
 {
   return !(cmd_move == 0);
 }
 
 void toggleMoveIndicator()
 {
-  if (is_moving())
+  if (isMoving())
   {
     digitalWrite(pin_indicator_move_led, (PinStatus)!digitalRead(pin_indicator_move_led));
     prev_move_indicator_millis = millis();
@@ -244,7 +243,7 @@ void setup()
 
   // Wait till button pressed to start
   Serial.println("Waiting for start button push...");
-  while (!start_btn_pressed) {
+  while (!startBtnPressed()) {
     delay(100);
   }
 

@@ -104,7 +104,7 @@ void setupOptors()
     Serial.println(r3);
     
     Serial.println("EXECUTION HALTED");
-    while true {
+    while (true) {
       delay(10000);
     }
   }
@@ -243,12 +243,12 @@ void setup()
   setupDriveMotors();
 
   // Wait till button pressed to start
-  Serial.println("Waiting for start button push...")
-  while !(start_btn_pressed) {
+  Serial.println("Waiting for start button push...");
+  while (!start_btn_pressed) {
     delay(100);
   }
 
-  Serial.println("Starting main loop")
+  Serial.println("Starting main loop");
 }
 
 void loop()

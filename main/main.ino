@@ -31,13 +31,14 @@ Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
 unsigned long prev_move_indicator_millis = 0;
 
 int cmd_move = 0; // 0 = stop, 1 = forward; 2 = backward; 3 = pivot left; 4 = pivot right; 5 = rotate left; 6 = rotate right
+int cmd_move_prev = cmd_move;
 int cmd_speed = 255;
 
 // FUNCTIONS
 
 void beginSerial()
 {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println(F("Main Program"));
   Serial.println(F("-----------------------------------------"));
 }
@@ -89,51 +90,54 @@ void toggleMoveIndicator()
 
 void driveMotors()
 {
-  switch (cmd_move)
+  if (cmd_move != cmd_move_prev)
   {
-  case 0: // Stop
-    L_MOTOR->setSpeed(0);
-    R_MOTOR->setSpeed(0);
-    L_MOTOR->run(RELEASE);
-    R_MOTOR->run(RELEASE);
-    break;
-  case 1: // Forward
-    L_MOTOR->run(FORWARD);
-    R_MOTOR->run(FORWARD);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
-  case 2: // Backward
-    L_MOTOR->run(BACKWARD);
-    R_MOTOR->run(BACKWARD);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
-  case 3: // Pivot left
-    Serial.println("case 3");
-    L_MOTOR->run(FORWARD);
-    R_MOTOR->run(RELEASE);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
-  case 4: // Pivot right
-    L_MOTOR->run(RELEASE);
-    R_MOTOR->run(FORWARD);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
-  case 5: // Rotate left
-    L_MOTOR->run(FORWARD);
-    R_MOTOR->run(BACKWARD);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
-  case 6: // Rotate right
-    L_MOTOR->run(BACKWARD);
-    R_MOTOR->run(FORWARD);
-    L_MOTOR->setSpeed(cmd_speed);
-    R_MOTOR->setSpeed(cmd_speed);
-    break;
+    cmd_move_prev = cmd_move;
+    switch (cmd_move)
+    {
+    case 0: // Stop
+      L_MOTOR->setSpeed(0);
+      R_MOTOR->setSpeed(0);
+      L_MOTOR->run(RELEASE);
+      R_MOTOR->run(RELEASE);
+      break;
+    case 1: // Forward
+      L_MOTOR->run(FORWARD);
+      R_MOTOR->run(FORWARD);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    case 2: // Backward
+      L_MOTOR->run(BACKWARD);
+      R_MOTOR->run(BACKWARD);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    case 3: // Pivot left
+      L_MOTOR->run(FORWARD);
+      R_MOTOR->run(RELEASE);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    case 4: // Pivot right
+      L_MOTOR->run(RELEASE);
+      R_MOTOR->run(FORWARD);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    case 5: // Rotate left
+      L_MOTOR->run(FORWARD);
+      R_MOTOR->run(BACKWARD);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    case 6: // Rotate right
+      L_MOTOR->run(BACKWARD);
+      R_MOTOR->run(FORWARD);
+      L_MOTOR->setSpeed(cmd_speed);
+      R_MOTOR->setSpeed(cmd_speed);
+      break;
+    }
   }
 }
 
@@ -166,11 +170,14 @@ bool optoIsDark(int opto_pin)
   
 }*/
 
-void simpleLineFollow() {
-  if (optoIsDark(pin_sens_optor_l)) {
+void simpleLineFollow()
+{
+  if (optoIsDark(pin_sens_optor_l))
+  {
     cmd_move = 4;
   }
-  else {
+  else
+  {
     cmd_move = 3;
   }
 }
@@ -194,7 +201,7 @@ void loop()
   }
 
   simpleLineFollow();
-  Serial.println(cmd_move);
+
   driveMotors();
   delay(100);
 }

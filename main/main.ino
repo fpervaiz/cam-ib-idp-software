@@ -16,11 +16,16 @@
 
 #define pin_indicator_move_led 2
 
+#define pin_btn_start 3
+
 #define port_motor_left 1
 #define port_motor_right 2
 
 #define const_move_indicator_period 250
+
 #define const_sens_optor_threshold 500
+#define const_sens_optor_working_minimum 10
+#define const_sens_optor_working_maximum 1000
 
 // VARIABLES
 
@@ -35,6 +40,8 @@ int cmd_move_prev = cmd_move;
 int cmd_speed = 255;
 
 // FUNCTIONS
+
+// Setup
 
 void beginSerial()
 {
@@ -68,6 +75,49 @@ void setupOptors()
   pinMode(pin_sens_optor_l, INPUT);
   pinMode(pin_sens_optor_c, INPUT);
   pinMode(pin_sens_optor_r, INPUT);
+
+  // Test each optoreflector
+  int r1 = analogRead(pin_sens_optor_l);
+  int r2 = analogRead(pin_sens_optor_c);
+  int r3 = analogRead(pin_sens_optor_r);
+  bool failure = false;
+
+  if (r1 > const_sens_optor_working_maximum || r1 < const_sens_optor_working_minimum) {
+    // Left optoreflector issue
+    failure = true;
+  }
+  if (r2 > const_sens_optor_working_maximum || r2 < const_sens_optor_working_minimum) {
+    // Centre optoreflector issue
+    failure = true;
+  }
+  if (r3 > const_sens_optor_working_maximum || r3 < const_sens_optor_working_minimum) {
+    // Right optoreflector issue
+    failure = true;
+  }
+
+  if (failure) {
+    Serial.println("Optoreflector readings outside working range!");
+    Serial.print(r1);
+    Serial.print(" ");
+    Serial.print(r2);
+    Serial.print(" ");
+    Serial.println(r3);
+    
+    Serial.println("EXECUTION HALTED");
+    while true {
+      delay(10000);
+    }
+  }
+}
+
+void setupBtns() {
+  pinMode(pin_btn_start, INPUT_PULLUP);
+}
+
+// Logic
+
+bool start_btn_pressed() {
+  return !digitalRead(pin_btn_start);
 }
 
 bool is_moving()
@@ -143,7 +193,7 @@ void driveMotors()
 
 bool optoIsDark(int opto_pin)
 {
-  Serial.println(analogRead(opto_pin));
+  // Serial.println(analogRead(opto_pin));
   return analogRead(opto_pin) < const_sens_optor_threshold;
 }
 
@@ -187,8 +237,18 @@ void simpleLineFollow()
 void setup()
 {
   beginSerial();
+  setupBtns();
+  setupIndicators();
   setupUltrasound();
   setupDriveMotors();
+
+  // Wait till button pressed to start
+  Serial.println("Waiting for start button push...")
+  while !(start_btn_pressed) {
+    delay(100);
+  }
+
+  Serial.println("Starting main loop")
 }
 
 void loop()

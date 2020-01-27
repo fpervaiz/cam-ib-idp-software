@@ -299,6 +299,49 @@ void simpleLineFollow()
   }
 }
 
+// New vars
+
+#include <Servo.h>
+
+double sig_max, an;
+unsigned long tS, tM, curr_time;
+int time_rotate = 500;
+
+Servo s_arm;
+Servo s_tray;
+
+void loadServo(){
+ s_tray.write(160); // Lower tray, assuming arm is already open
+ s_arm.write(20);   // Close arm
+ s_tray.write(20);  // Raise tray
+  
+}
+
+void radialSearch(){
+  cmd_move = 5;
+  sig_max = 0;
+
+  driveMotor();
+  
+  for (int t = 0; t < time_rotate; t++){
+    an = analogRead(IRPin);
+    curr_time = millis();
+    
+    if (an > sig_max){
+      sig_max = an; 
+      tM = curr_time}
+
+    // delay(2)
+    }
+
+  cmd_move = 6;
+  curr_time = millis();
+  driveMotor();
+  delay(curr_time - tM);
+  cmd_move = 0;
+  driveMotor();
+}
+
 // PROGRAM
 
 void setup()

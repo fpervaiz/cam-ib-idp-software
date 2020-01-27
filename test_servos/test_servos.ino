@@ -7,7 +7,7 @@ int pos_arm = 0;
 int pos_tray = 0;
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   s_arm.attach(9);
   s_tray.attach(10);
   s_arm.write(20);

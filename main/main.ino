@@ -237,37 +237,37 @@ void lineFollow()
     cmd_speed = const_motor_full_speed;
     cmd_move = PVTR;
   }
-  else if (b1 && b2 && !b3)
+  else if (b1 && !b2 && b3)
   {
     // B W B - straight - on line
     cmd_speed = const_motor_full_speed;
     cmd_move = FWRD;
   }
-  else if (b1 && b2 && !b3)
+  else if (b1 && !b2 && !b3)
   {
     // B W W - pivot right
     cmd_speed = const_motor_half_speed;
     cmd_move = PVTR;
   }
-  else if (b1 && b2 && !b3)
+  else if (!b1 && b2 && b3)
   {
     // W B B - pivot hard left
     cmd_speed = const_motor_full_speed;
     cmd_move = PVTL;
   }
-  else if (b1 && b2 && !b3)
+  else if (!b1 && b2 && !b3)
   {
     // W B W - junction - decision - to be implemented
     cmd_speed = const_motor_half_speed;
     cmd_move = FWRD;
   }
-  else if (b1 && b2 && !b3)
+  else if (!b1 && !b2 && b3)
   {
     // W W B - pivot left
     cmd_speed = const_motor_half_speed;
     cmd_move = PVTL;
   }
-  else if (b1 && b2 && !b3)
+  else if (!b1 && !b2 && !b3)
   {
     // W W W - junction - decision
     cmd_speed = const_motor_full_speed;
@@ -297,49 +297,6 @@ void simpleLineFollow()
     cmd_speed = const_motor_full_speed;
     cmd_move = PVTR;
   }
-}
-
-// New vars
-
-#include <Servo.h>
-
-double sig_max, an;
-unsigned long tS, tM, curr_time;
-int time_rotate = 500;
-
-Servo s_arm;
-Servo s_tray;
-
-void loadServo(){
- s_tray.write(160); // Lower tray, assuming arm is already open
- s_arm.write(20);   // Close arm
- s_tray.write(20);  // Raise tray
-  
-}
-
-void radialSearch(){
-  cmd_move = 5;
-  sig_max = 0;
-
-  driveMotor();
-  
-  for (int t = 0; t < time_rotate; t++){
-    an = analogRead(IRPin);
-    curr_time = millis();
-    
-    if (an > sig_max){
-      sig_max = an; 
-      tM = curr_time}
-
-    // delay(2)
-    }
-
-  cmd_move = 6;
-  curr_time = millis();
-  driveMotor();
-  delay(curr_time - tM);
-  cmd_move = 0;
-  driveMotor();
 }
 
 // PROGRAM

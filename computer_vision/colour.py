@@ -29,7 +29,7 @@ magenta_upper = np.array([165,255,255],np.uint8)
 
 while True:
     _, img = cap.read()
-    '''
+    
     #converting frame(img) from BGR (Blue-Green-Red) to HSV (hue-saturation-value)
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -102,7 +102,7 @@ while True:
                         
         x,y,w,h = cv2.boundingRect(contour)     
         img = cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),3)
-    '''                    
+                   
     cv2.imshow("Color Tracking",img)
     img = cv2.flip(img,1)
     

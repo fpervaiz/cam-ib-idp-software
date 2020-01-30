@@ -299,6 +299,121 @@ void simpleLineFollow()
   }
 }
 
+// New vars
+
+#include <Servo.h>
+
+double sig_max, an;
+unsigned long tS, tM, curr_time;
+int time_rotate = 500;
+int angle_time = 300;
+double distance, left_check, right_check, delta_d = 10;
+
+Servo s_arm;
+Servo s_tray;
+
+void tryApproach(){
+  
+  while (true){
+
+    // Move forward
+    distance = analogRead(ultrasoundPIN)     // Treating this like cm here, 
+    cmd_move = FWRD;
+    driveMotors();
+
+    // Stop and check
+    cmd_move = PVTL;
+    driveMotors();
+    delay(angle_time);
+    cmd_move = STOP;
+    driveMotors();
+    left_check = analogRead(ultrasoundPIN);
+
+    // Compare angled distance
+    if(left_check - delta_d <= distance && distance <= 10){  // Close to wall
+      break;
+    }
+
+    if(left_check - delta_d >= distance && distance <= 10){  // Close to survivor
+      pickUpSurvivor();
+      break
+    }
+
+    cmd_move = PVTR;
+    driveMotors();
+    delay(angle_time);
+
+    cmd_move = FWRD;
+    driveMotors();
+  }
+}
+
+#define ARMOPEN = 160
+#define ARMCLOSE = 20
+#define TRAYLOW = 160
+#define TRAYHIGH = 20
+
+
+void pickUpSurvivor(){
+
+  // Turn around
+  s_arm.write(ARMOPEN)   // Open arm before turning around
+  cmd_move = PVTL;       // Might have to be changed depending side of lever arm
+  driveMotors();
+  delay(3000);           // Change for 180 deg time
+
+  cmd_move = STOP;
+  driveMotors();
+  delay(400);
+
+  // Final pick up
+  s_tray.write(TRAYLOW); // Lower tray
+
+  cmd_move = RVRS;
+  cmd_speed = const_motor_half_speed;
+  driveMotors();
+
+  cmd_speed = const_motor_full_speed;
+
+  s_arm.write(ARMCLOSE);   // Close arm
+  s_tray.write(TRAYHIGH);  // Raise tray
+
+}
+
+void radialSearch(){
+  cmd_move = 5;
+  sig_max = 0;
+
+  driveMotor();
+  
+  for (int t = 0; t < time_rotate; t++){
+    an = analogRead(IRPin);
+    curr_time = millis();
+    
+    if (an > sig_max){
+      sig_max = an; 
+      tM = curr_time;}
+
+    // delay(2)
+    }
+
+  cmd_move = 6;
+  curr_time = millis();
+  driveMotor();
+  delay(curr_time - tM);
+  cmd_move = 0;
+  driveMotor();
+}
+
+from roam import roam as roam
+roam = roam.Roam
+roam.roam(roam = roam)
+
+void roamBoard(){
+  
+}
+
+
 // PROGRAM
 
 void setup()

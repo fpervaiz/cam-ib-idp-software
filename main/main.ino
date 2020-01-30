@@ -345,6 +345,10 @@ void tryApproach(){
 
     cmd_move = FWRD;
     driveMotors();
+
+    while(analogRead(ultrasoundPin) >= distance - 8){
+      Serial.print("wow");
+    }
   }
 }
 

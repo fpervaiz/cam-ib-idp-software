@@ -82,6 +82,11 @@ while True:
         cv2.circle(frame, tuple(b2), 5, (255, 0, 0), 2)
         cv2.circle(frame, tuple(b3), 5, (255, 0, 0), 2)
         cv2.circle(frame, tuple(b4), 5, (255, 0, 0), 2)
+
+        cv2.line(frame, tuple(b1), tuple(b2), (255, 0, 0), 2)
+        cv2.line(frame, tuple(b2), tuple(b3), (255, 0, 0), 2)
+        cv2.line(frame, tuple(b3), tuple(b4), (255, 0, 0), 2)
+        cv2.line(frame, tuple(b4), tuple(b1), (255, 0, 0), 2)
     
     frame = cv2.flip(frame, 1)
     cv2.imshow("Aruco Tracking", frame)

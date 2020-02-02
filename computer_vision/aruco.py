@@ -1,5 +1,5 @@
 import numpy as np
-import cv2, PIL
+import cv2
 from cv2 import aruco
 import time
 
@@ -27,7 +27,7 @@ cv2.createTrackbar('Width', 'Bars', int(bot_width*100), 200, bot_width_trackbar)
 cv2.createTrackbar('Front', 'Bars', int(bot_front*100), 200, bot_front_trackbar)
 cv2.createTrackbar('Rear', 'Bars', int(bot_rear*100), 200, bot_rear_trackbar)
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 while True:
     _, frame = cap.read()

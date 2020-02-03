@@ -74,28 +74,29 @@ while True:
             Lcy = int(M['m01']/M['m00'])
             cv2.circle(img, (Lcx, Lcy), 2, (0, 0, 0), 2)
     
-    #Lcx, Lcy, Rcx, Rcy = 0, 0, 0, 0
+    '''if Lcx and Lcy and Rcx and Rcy:
+        #Lcx, Lcy, Rcx, Rcy = 0, 0, 0, 0
 
-    cv2.line(img, (Lcx, Lcy), (Rcx, Rcy), (0, 0, 0), 3)
-    mx = 0.5*(Lcx + Rcx)
-    my = 0.5*(Lcy + Rcy)
-    cv2.circle(img, (int(mx), int(my)), 2, (0, 255, 255), 2)
+        cv2.line(img, (Lcx, Lcy), (Rcx, Rcy), (0, 0, 0), 3)
+        mx = 0.5*(Lcx + Rcx)
+        my = 0.5*(Lcy + Rcy)
+        cv2.circle(img, (int(mx), int(my)), 2, (0, 255, 255), 2)
 
-    #cv2.line(img, (x1, y1), (x2, y2), (0, 0, 0), 3)
+        #cv2.line(img, (x1, y1), (x2, y2), (0, 0, 0), 3)
 
-    v_dir = np.array([Lcx - Rcx, Lcy - Rcy])
-    v_dir_rot = np.array([-v_dir[1], v_dir[0]])
-    vu_dir_rot = v_dir_rot / np.linalg.norm(v_dir_rot)
-    
-    l = 50
-    
-    ex = mx + v_dir_rot[0] * l
-    ey = my + v_dir_rot[1] * l
+        v_dir = np.array([Lcx - Rcx, Lcy - Rcy])
+        v_dir_rot = np.array([-v_dir[1], v_dir[0]])
+        vu_dir_rot = v_dir_rot / np.linalg.norm(v_dir_rot)
+        
+        l = 50
+        
+        ex = mx + v_dir_rot[0] * l
+        ey = my + v_dir_rot[1] * l
 
-    #print([ex, ey])
+        #print([ex, ey])
 
-    cv2.line(img, (int(mx), int(my)), (int(ex), int(ey)), (0, 0, 0), 3)
-
+        cv2.line(img, (int(mx), int(my)), (int(ex), int(ey)), (0, 0, 0), 3)
+    '''
     victim = cv2.inRange(hsv, victim_lower, victim_upper)
 
     kernel_victim = np.ones((5, 5), "uint8")

@@ -27,7 +27,11 @@ cv2.createTrackbar('Width', 'Bars', int(bot_width*100), 200, bot_width_trackbar)
 cv2.createTrackbar('Front', 'Bars', int(bot_front*100), 200, bot_front_trackbar)
 cv2.createTrackbar('Rear', 'Bars', int(bot_rear*100), 200, bot_rear_trackbar)
 
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+#cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+cap = cv2.VideoCapture('http://localhost:8080/')
+#cap.set(6, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+cap.set(3,800)
+cap.set(4,600)
 
 while True:
     _, frame = cap.read()
@@ -88,7 +92,7 @@ while True:
         cv2.line(frame, tuple(b3), tuple(b4), (255, 0, 0), 2)
         cv2.line(frame, tuple(b4), tuple(b1), (255, 0, 0), 2)
     
-    frame = cv2.flip(frame, 1)
+    #frame = cv2.flip(frame, 1)
     cv2.imshow("Aruco Tracking", frame)
 
     key = cv2.waitKey(1)

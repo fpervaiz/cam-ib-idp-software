@@ -33,6 +33,10 @@
 #define const_sens_optor_working_minimum 10
 #define const_sens_optor_working_maximum 1000
 
+#define const_topic_bot_serial "/idp/bot/serial"
+#define const_topic_bot_cmd "/idp/bot/cmd"
+#define const_topic_bot_stt "/idp/bot/stt"
+
 // Movement command definitions
 
 #define STOP 0
@@ -50,11 +54,15 @@ Adafruit_DCMotor *L_MOTOR = AFMS.getMotor(port_motor_left);
 Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
 
 unsigned long prev_move_indicator_millis = 0;
+unsigned long temp_drive_timestore = 0;
+int temp_drive_interval;
 
 int cmd_move = 0; // 0 = stop, 1 = forward; 2 = backward; 3 = pivot left; 4 = pivot right; 5 = rotate left; 6 = rotate right
 int cmd_move_prev = cmd_move;
 int cmd_speed = 255;
 bool line_follow_complete = false;
+
+int task_state = 0;
 
 char ssid[] = "IDP_L101";
 char pass[] = ">r063W83";
@@ -71,6 +79,8 @@ PubSubClient mqc(net);
 void beginSerial()
 {
   Serial.begin(9600);
+  Serial.println(F("-----------------------------------------"));
+  Serial.println(" ");
   Serial.println(F("Main Program"));
   Serial.println(F("-----------------------------------------"));
 }
@@ -131,20 +141,25 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 
 void connectMqtt()
 {
+    int temp = cmd_move;
     while (!mqc.connected())
     {
+        cmd_move = STOP;
+
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
         if (mqc.connect("arduinoClient"))
         {
             Serial.println("connected");
             // Once connected, publish an announcement...
-            mqc.publish("/idp/bot/serial", " ");
-            mqc.publish("/idp/bot/serial", "-----------------------------------");
-            mqc.publish("/idp/bot/serial", "L101 Main Bot Program");
-            mqc.publish("/idp/bot/serial", "Arduino connected.");
+            mqc.publish(const_topic_bot_serial, " ");
+            mqc.publish(const_topic_bot_serial, "-----------------------------------");
+            mqc.publish(const_topic_bot_serial, "L101 Main Bot Program");
+            mqc.publish(const_topic_bot_serial, "Arduino connected.");
             // ... and resubscribe
             mqc.subscribe("/idp/bot/cmd");
+
+            cmd_move = temp;
         }
         else
         {
@@ -199,11 +214,11 @@ void setupOptors()
   int r3 = analogRead(pin_sens_optor_r);
   bool failure = false;
 
-  /*if (r1 > const_sens_optor_working_maximum || r1 < const_sens_optor_working_minimum)
+  if (r1 > const_sens_optor_working_maximum || r1 < const_sens_optor_working_minimum)
   {
     // Left optoreflector issue
     failure = true;
-  }*/
+  }
   if (r2 > const_sens_optor_working_maximum || r2 < const_sens_optor_working_minimum)
   {
     // Centre optoreflector issue
@@ -224,13 +239,13 @@ void setupOptors()
     Serial.print(" ");
     Serial.println(r3);
 
-    //mqc.publish("/idp/bot/serial", "Optoreflector readings outside working range!");
-    //mqc.publish("/idp/bot/serial", r1);
-    //mqc.publish("/idp/bot/serial", r2);
-    //mqc.publish("/idp/bot/serial", r3);
+    mqc.publish(const_topic_bot_serial, "Optoreflector readings outside working range!");
+    mqc.publish(const_topic_bot_serial, r1);
+    mqc.publish(const_topic_bot_serial, r2);
+    mqc.publish(const_topic_bot_serial, r3);
     
     Serial.println("EXECUTION HALTED");
-    //mqc.publish("/idp/bot/serial", "EXECUTION HALTED");
+    mqc.publish(const_topic_bot_serial, "EXECUTION HALTED");
 
     while (true)
     {
@@ -245,10 +260,10 @@ void setupOptors()
     Serial.print(" ");
     Serial.println(r3);
 
-    //mqc.publish("/idp/bot/serial", "All optoreflector readings inside range.");
-    //mqc.publish("/idp/bot/serial", r1);
-    //mqc.publish("/idp/bot/serial", r2);
-    //mqc.publish("/idp/bot/serial", r3);
+    mqc.publish(const_topic_bot_serial, "All optoreflector readings inside range.");
+    mqc.publish(const_topic_bot_serial, r1);
+    mqc.publish(const_topic_bot_serial, r2);
+    mqc.publish(const_topic_bot_serial, r3);
   }
 }
 
@@ -290,7 +305,7 @@ void driveMotors()
 
     char cmd_stt[16];
     itoa(cmd_move, cmd_stt, 10);
-    //mqc.publish("/idp/bot/stt", cmd_stt);
+    mqc.publish(const_topic_bot_stt, cmd_stt);
 
     switch (cmd_move)
     {
@@ -358,7 +373,7 @@ void lineFollow()
     // B B B - lost
     cmd_move = STOP;
     Serial.println("Lost.");
-    //mqc.publish("/idp/bot/serial", "Lost.");
+    mqc.publish(const_topic_bot_serial, "Lost.");
   }
   else if (b1 && b2 && !b3)
   {
@@ -413,10 +428,10 @@ void lineFollow()
     Serial.print(" ");
     Serial.println(b3);
 
-    //mqc.publish("/idp/bot/serial", "Undefined optoreflector state:");
-    //mqc.publish("/idp/bot/serial", char(b1));
-    //mqc.publish("/idp/bot/serial", char(b2));
-    //mqc.publish("/idp/bot/serial", char(b3));
+    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_serial, char(b1));
+    mqc.publish(const_topic_bot_serial, char(b2));
+    mqc.publish(const_topic_bot_serial, char(b3));
   }
 }
 
@@ -440,8 +455,8 @@ void setup()
 {
   beginSerial();
   setupDriveMotors();
-  //setupWifi();
-  //setupMqtt();
+  setupWifi();
+  setupMqtt();
   setupBtns();
   setupIndicators();
   setupUltrasound();
@@ -449,15 +464,18 @@ void setup()
 
   // Wait till button pressed to start
   Serial.println("Waiting for start button push...");
-  //mqc.publish("/idp/bot/serial", "Waiting for start button push...");
+  mqc.publish(const_topic_bot_serial, "Waiting for start button push...");
   while (!startBtnPressed())
   {
     delay(100);
-    //mqc.loop();
+    mqc.loop();
   }
 
   Serial.println("Starting main loop");
-  //mqc.publish("/idp/bot/serial", "Starting main loop");
+  mqc.publish(const_topic_bot_serial, "Starting main loop");
+
+  task_state = 3;
+
 }
 
 void loop()
@@ -469,6 +487,52 @@ void loop()
     toggleMoveIndicator();
   }
 
+  switch (task_state) {
+    case 0:
+      break;
+
+    case 1:
+      // Line following to start box exit
+      if (!line_follow_complete) {
+        lineFollow();
+      }
+      else {
+        // Reached border: drive forward to clear border
+        if (cmd_move == STOP) {
+          temp_drive_timestore = millis();
+          temp_drive_interval = 1000;
+          cmd_move = FWRD;
+        }
+        else {
+          // Task state increment
+          if (millis() - temp_drive_timestore > temp_drive_interval) {
+            cmd_move = STOP;
+            task_state = 2;
+          }
+        }        
+      }
+      break;
+
+    case 2:
+      // Line following to enter cave
+      if (!line_follow_complete) {
+        lineFollow();
+      }
+      else {
+        // Reached cave entry line
+        cmd_move = STOP;
+        mqc.publish(const_topic_bot_stt, "vector_ready");
+        task_state = 3;
+      }
+      break;
+
+    case 3:
+      // CV vector drive
+      //collisionAvoidance();      
+      break;
+  }
+
+  /*
   //simpleLineFollow();
   if (!line_follow_complete) {
     lineFollow();
@@ -476,11 +540,11 @@ void loop()
   else {
     // Search
     Serial.println("Line follow complete. Beginning search and rescue.");
-    mqc.publish("/idp/bot/stt", "lf_complete");
+    mqc.publish(const_topic_bot_serial, "Line follow complete. Beginning search and rescue.");
+    mqc.publish(const_topic_bot_stt, "lf_complete");
   }
+  */
   
-  cmd_speed = 255;
   driveMotors();
-  delay(10);
-  //mqc.loop();
+  mqc.loop();
 }

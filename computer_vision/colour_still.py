@@ -2,19 +2,7 @@ import numpy as np
 import cv2
 import time
 
-cap = cv2.VideoCapture(1)
-
-cap.set(3,1024)
-cap.set(4,768)
-#cap.set(10, 50)
-#160.0 x 120.0
-#176.0 x 144.0
-#320.0 x 240.0
-#352.0 x 288.0
-#640.0 x 480.0
-#1024.0 x 768.0
-#1280.0 x 1024.0
-time.sleep(2)
+from glob import glob
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -27,8 +15,10 @@ cyan_upper = np.array([140, 255, 255], np.uint8)
 magenta_lower = np.array([125, 60, 200], np.uint8)
 magenta_upper = np.array([165, 255, 255], np.uint8)
 
-while True:
-    _, img = cap.read()
+caps = glob('./computer_vision/test_caps/*')
+
+for cap in caps:
+    img = cv2.imread(cap)
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
@@ -38,7 +28,8 @@ while True:
     blue_cyan = cv2.dilate(cyan, kernel_cyan)
     res_cyan = cv2.bitwise_and(img, img, mask=cyan)
 
-    (_, contours, hierarchy) = cv2.findContours(cyan, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    (contours, hierarchy) = cv2.findContours(
+        cyan, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
@@ -59,7 +50,8 @@ while True:
     blue_magenta = cv2.dilate(magenta, kernel_magenta)
     res_magenta = cv2.bitwise_and(img, img, mask=magenta)
 
-    (_, contours, hierarchy) = cv2.findContours(magenta, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    (contours, hierarchy) = cv2.findContours(
+        magenta, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
@@ -73,37 +65,34 @@ while True:
             Lcx = int(M['m10']/M['m00'])
             Lcy = int(M['m01']/M['m00'])
             cv2.circle(img, (Lcx, Lcy), 2, (0, 0, 0), 2)
+
+    cv2.line(img, (Lcx, Lcy), (Rcx, Rcy), (0, 0, 0), 3)
+    mx = 0.5*(Lcx + Rcx)
+    my = 0.5*(Lcy + Rcy)
+    cv2.circle(img, (int(mx), int(my)), 2, (0, 255, 255), 2)
+
+    #cv2.line(img, (x1, y1), (x2, y2), (0, 0, 0), 3)
+
+    v_dir = np.array([Lcx - Rcx, Lcy - Rcy])
+    v_dir_rot = np.array([-v_dir[1], v_dir[0]])
+    vu_dir_rot = v_dir_rot / np.linalg.norm(v_dir_rot)
     
-    '''if Lcx and Lcy and Rcx and Rcy:
-        #Lcx, Lcy, Rcx, Rcy = 0, 0, 0, 0
+    l = 50
+    
+    ex = mx + v_dir_rot[0] * l
+    ey = my + v_dir_rot[1] * l
 
-        cv2.line(img, (Lcx, Lcy), (Rcx, Rcy), (0, 0, 0), 3)
-        mx = 0.5*(Lcx + Rcx)
-        my = 0.5*(Lcy + Rcy)
-        cv2.circle(img, (int(mx), int(my)), 2, (0, 255, 255), 2)
+    print([ex, ey])
 
-        #cv2.line(img, (x1, y1), (x2, y2), (0, 0, 0), 3)
+    cv2.line(img, (int(mx), int(my)), (int(ex), int(ey)), (0, 0, 0), 3)
 
-        v_dir = np.array([Lcx - Rcx, Lcy - Rcy])
-        v_dir_rot = np.array([-v_dir[1], v_dir[0]])
-        vu_dir_rot = v_dir_rot / np.linalg.norm(v_dir_rot)
-        
-        l = 50
-        
-        ex = mx + v_dir_rot[0] * l
-        ey = my + v_dir_rot[1] * l
-
-        #print([ex, ey])
-
-        cv2.line(img, (int(mx), int(my)), (int(ex), int(ey)), (0, 0, 0), 3)
-    '''
     victim = cv2.inRange(hsv, victim_lower, victim_upper)
 
     kernel_victim = np.ones((5, 5), "uint8")
     blue_victim = cv2.dilate(victim, kernel_victim)
     res_victim = cv2.bitwise_and(img, img, mask=victim)
 
-    (_, contours, hierarchy) = cv2.findContours(victim, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    (contours, hierarchy) = cv2.findContours(victim, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
@@ -114,7 +103,7 @@ while True:
     cv2.imshow("Color Tracking", img)
     img = cv2.flip(img, 1)
 
-    key = cv2.waitKey(1)
+    key = cv2.waitKey(0)
     if key & 0xFF == ord('n'):
         continue
     elif key & 0xFF == ord('s'):
@@ -123,5 +112,4 @@ while True:
     elif key & 0xFF == ord('q'):
         break
 
-cap.release()
 cv2.destroyAllWindows()

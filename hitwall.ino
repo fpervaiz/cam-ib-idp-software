@@ -38,7 +38,9 @@ void loop() {
   hitWall = digitalRead(microPin);
   
   if (hitWall == HIGH && previous == LOW && millis() - time > debounce){
-    hitAWall(); }
+    hitAWall();
+    time = millis();
+    }
 
   previous = hitWall;
     

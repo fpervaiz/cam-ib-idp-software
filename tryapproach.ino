@@ -409,6 +409,7 @@ void radialSearch(){
   driveMotor();
 }
 
+
 void roamBoard(){
   
 }
@@ -432,19 +433,14 @@ void setup()
   }
 
   Serial.println("Starting main loop");
+
+  bool do = true;
 }
 
 void loop()
 {
-  unsigned long current_millis = millis();
-
-  if (current_millis - prev_move_indicator_millis >= const_move_indicator_period)
-  {
-    toggleMoveIndicator();
-  }
-
-  //simpleLineFollow();
-  lineFollow();
-  driveMotors();
-  delay(10);
+  if (do){
+      tryApproach();
+      do = false;
+      }
 }

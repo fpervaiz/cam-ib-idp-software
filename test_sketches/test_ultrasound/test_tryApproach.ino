@@ -6,8 +6,8 @@
 
 // DEFINITIONS
 
-#define pin_sens_ultrasound_trigger 10
-#define pin_sens_ultrasound_echo 13
+#define trigPin 10
+#define echoPin 13
 
 #define pin_sens_optor_l A0
 #define pin_sens_optor_c A1
@@ -30,6 +30,7 @@
 #define const_sens_optor_r_threshold 350
 #define const_sens_optor_working_minimum 10
 #define const_sens_optor_working_maximum 1000
+
 
 // Movement command definitions
 
@@ -66,8 +67,8 @@ void beginSerial()
 
 void setupUltrasound()
 {
-  pinMode(pin_sens_ultrasound_trigger, OUTPUT);
-  pinMode(pin_sens_ultrasound_echo, INPUT);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
 }
 
 void setupDriveMotors()
@@ -312,12 +313,27 @@ double distance, left_check, right_check, delta_d = 10;
 Servo s_arm;
 Servo s_tray;
 
+float readUSDistance(){
+    float duration, distance;
+    digitalWrite(trigPin, LOW); 
+    delayMicroseconds(2);
+ 
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+  
+    duration = pulseIn(echoPin, HIGH);
+    distance = (duration / 2) * 0.0344;
+
+    return distance;
+  }
+
 void tryApproach(){
   
   while (true){
 
     // Move forward
-    distance = analogRead(ultrasoundPIN)     // Treating this like cm here, 
+    distance = readUSDistance();     // Treating this like cm here, 
     cmd_move = FWRD;
     driveMotors();
 
@@ -327,7 +343,7 @@ void tryApproach(){
     delay(angle_time);
     cmd_move = STOP;
     driveMotors();
-    left_check = analogRead(ultrasoundPIN);
+    left_check = readUSDistance();;
 
     // Compare angled distance
     if(left_check - delta_d <= distance && distance <= 10){  // Close to wall
@@ -336,7 +352,7 @@ void tryApproach(){
 
     if(left_check - delta_d >= distance && distance <= 10){  // Close to survivor
       pickUpSurvivor();
-      break
+      break;
     }
 
     cmd_move = PVTR;
@@ -346,22 +362,22 @@ void tryApproach(){
     cmd_move = FWRD;
     driveMotors();
 
-    while(analogRead(ultrasoundPin) >= distance - 8){
+    while(readUSDistance() >= distance - 8){
       Serial.print("wow");
     }
   }
 }
 
-#define ARMOPEN = 160
-#define ARMCLOSE = 20
-#define TRAYLOW = 160
-#define TRAYHIGH = 20
+#define ARMOPEN 160
+#define ARMCLOSE 20
+#define TRAYLOW 160
+#define TRAYHIGH 20
 
 
 void pickUpSurvivor(){
 
   // Turn around
-  s_arm.write(ARMOPEN)   // Open arm before turning around
+  s_arm.write(ARMOPEN);   // Open arm before turning around
   cmd_move = PVTL;       // Might have to be changed depending side of lever arm
   driveMotors();
   delay(3000);           // Change for 180 deg time
@@ -385,10 +401,10 @@ void pickUpSurvivor(){
 }
 
 void radialSearch(){
-  cmd_move = 5;
+/*  cmd_move = 5;
   sig_max = 0;
 
-  driveMotor();
+  driveMotors();
   
   for (int t = 0; t < time_rotate; t++){
     an = analogRead(IRPin);
@@ -403,10 +419,10 @@ void radialSearch(){
 
   cmd_move = 6;
   curr_time = millis();
-  driveMotor();
+  driveMotors();
   delay(curr_time - tM);
   cmd_move = 0;
-  driveMotor();
+  driveMotor();*/
 }
 
 void roamBoard(){
@@ -430,6 +446,9 @@ void setup()
   {
     delay(100);
   }
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
 
   Serial.println("Starting main loop");
 }

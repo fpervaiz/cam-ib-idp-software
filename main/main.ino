@@ -27,15 +27,16 @@
 
 #define const_move_indicator_period 250
 
-#define const_sens_optor_l_threshold 500 // 500
-#define const_sens_optor_c_threshold 500 // 250
-#define const_sens_optor_r_threshold 500 // 350
+#define const_sens_optor_l_threshold 70 // 500
+#define const_sens_optor_c_threshold 70 // 250
+#define const_sens_optor_r_threshold 70 // 350
 #define const_sens_optor_working_minimum 10
 #define const_sens_optor_working_maximum 1000
 
 #define const_topic_bot_serial "/idp/bot/serial"
 #define const_topic_bot_cmd "/idp/bot/cmd"
 #define const_topic_bot_stt "/idp/bot/stt"
+#define const_topic_bot_stage "/idp/bot/stage"
 
 // Movement command definitions
 
@@ -54,13 +55,22 @@ Adafruit_DCMotor *L_MOTOR = AFMS.getMotor(port_motor_left);
 Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
 
 unsigned long prev_move_indicator_millis = 0;
-unsigned long temp_drive_timestore = 0;
-int temp_drive_interval;
+
+unsigned long temp_timestore = 0;
+int temp_time_interval;
+bool temp_wait_complete = true;
 
 int cmd_move = 0; // 0 = stop, 1 = forward; 2 = backward; 3 = pivot left; 4 = pivot right; 5 = rotate left; 6 = rotate right
 int cmd_move_prev = cmd_move;
 int cmd_speed = 255;
+
 bool line_follow_complete = false;
+
+/*
+bool health_detect_wait_complete = true;
+bool victim_pickup_wait_complete = true;
+bool victim_unload_wait_complete = true;
+*/
 
 int task_state = 0;
 
@@ -134,9 +144,17 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
     }
     Serial.println();
 
-    payload[length] = '\0';
-    int cmd_val = atoi((char *)payload);
-    cmd_move = cmd_val;
+    if (topic == const_topic_bot_cmd) {
+      payload[length] = '\0';
+      int cmd_val = atoi((char *)payload);
+      cmd_move = cmd_val;
+    }
+    else if (topic == const_topic_bot_stage) {
+      payload[length] = '\0';
+      int state_val = atoi((char *)payload);
+      task_state = state_val;
+    }
+    
 }
 
 void connectMqtt()
@@ -156,8 +174,12 @@ void connectMqtt()
             mqc.publish(const_topic_bot_serial, "-----------------------------------");
             mqc.publish(const_topic_bot_serial, "L101 Main Bot Program");
             mqc.publish(const_topic_bot_serial, "Arduino connected.");
-            // ... and resubscribe
-            mqc.subscribe("/idp/bot/cmd");
+
+            //mqc.publish(const_topic_bot_stt, task_state);
+
+            // ... and subscribe
+            mqc.subscribe(const_topic_bot_cmd);
+            mqc.subscribe(const_topic_bot_stage);
 
             cmd_move = temp;
         }
@@ -240,9 +262,9 @@ void setupOptors()
     Serial.println(r3);
 
     mqc.publish(const_topic_bot_serial, "Optoreflector readings outside working range!");
-    mqc.publish(const_topic_bot_serial, r1);
-    mqc.publish(const_topic_bot_serial, r2);
-    mqc.publish(const_topic_bot_serial, r3);
+    mqc.publish(const_topic_bot_serial, String(r1).c_str());
+    mqc.publish(const_topic_bot_serial, String(r2).c_str());
+    mqc.publish(const_topic_bot_serial, String(r3).c_str());
     
     Serial.println("EXECUTION HALTED");
     mqc.publish(const_topic_bot_serial, "EXECUTION HALTED");
@@ -261,9 +283,9 @@ void setupOptors()
     Serial.println(r3);
 
     mqc.publish(const_topic_bot_serial, "All optoreflector readings inside range.");
-    mqc.publish(const_topic_bot_serial, r1);
-    mqc.publish(const_topic_bot_serial, r2);
-    mqc.publish(const_topic_bot_serial, r3);
+    mqc.publish(const_topic_bot_serial, String(r1).c_str());
+    mqc.publish(const_topic_bot_serial, String(r2).c_str());
+    mqc.publish(const_topic_bot_serial, String(r3).c_str());
   }
 }
 
@@ -305,7 +327,7 @@ void driveMotors()
 
     char cmd_stt[16];
     itoa(cmd_move, cmd_stt, 10);
-    mqc.publish(const_topic_bot_stt, cmd_stt);
+    //mqc.publish(const_topic_bot_stt, cmd_stt);
 
     switch (cmd_move)
     {
@@ -429,12 +451,161 @@ void lineFollow()
     Serial.println(b3);
 
     mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
-    mqc.publish(const_topic_bot_serial, char(b1));
-    mqc.publish(const_topic_bot_serial, char(b2));
-    mqc.publish(const_topic_bot_serial, char(b3));
+    mqc.publish(const_topic_bot_serial, String(b1).c_str());
+    mqc.publish(const_topic_bot_serial, String(b2).c_str());
+    mqc.publish(const_topic_bot_serial, String(b3).c_str());
   }
 }
 
+void lineFollow2()
+{
+  bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
+  bool b2 = optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold);
+  bool b3 = optoIsDark(pin_sens_optor_r, const_sens_optor_r_threshold);
+
+  if (b1 && b2 && b3)
+  {
+    // B B B - lost
+    cmd_speed = const_motor_full_speed;
+    cmd_move = STOP;
+    Serial.println("Complete.");
+    mqc.publish(const_topic_bot_serial, "Complete.");
+    line_follow_complete = true;
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // B B W - pivot hard right
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTR;
+  }
+  else if (b1 && !b2 && b3)
+  {
+    // B W B - straight - on line
+    cmd_speed = const_motor_full_speed;
+    cmd_move = FWRD;
+  }
+  else if (b1 && !b2 && !b3)
+  {
+    // B W W - pivot right
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTR;
+  }
+  else if (!b1 && b2 && b3)
+  {
+    // W B B - pivot hard left
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTL;
+  }
+  else if (!b1 && b2 && !b3)
+  {
+    // W B W - junction - decision - to be implemented
+    cmd_speed = const_motor_half_speed;
+    cmd_move = FWRD;
+  }
+  else if (!b1 && !b2 && b3)
+  {
+    // W W B - pivot left
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTL;
+  }
+  else if (!b1 && !b2 && !b3)
+  {
+    // W W W - junction - decision
+    cmd_speed = const_motor_half_speed;
+    cmd_move = FWRD;
+    //line_follow_complete = true;
+  }
+  else
+  {
+    // Undefined reading set
+    Serial.println("Undefined optoreflector state:");
+    Serial.print(b1);
+    Serial.print(" ");
+    Serial.print(b2);
+    Serial.print(" ");
+    Serial.println(b3);
+
+    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_serial, String(b1).c_str());
+    mqc.publish(const_topic_bot_serial, String(b2).c_str());
+    mqc.publish(const_topic_bot_serial, String(b3).c_str());
+  }
+}
+
+void lineFollow3()
+{
+  bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
+  bool b2 = optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold);
+  bool b3 = optoIsDark(pin_sens_optor_r, const_sens_optor_r_threshold);
+
+  if (b1 && b2 && b3)
+  {
+    // B B B - lost
+    cmd_move = STOP;
+    Serial.println("Lost.");
+    mqc.publish(const_topic_bot_serial, "Lost.");
+  }
+  else if (b1 && b2 && !b3)
+  {
+    // B B W - pivot hard right
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTR;
+  }
+  else if (b1 && !b2 && b3)
+  {
+    // B W B - straight - on line
+    cmd_speed = const_motor_full_speed;
+    cmd_move = FWRD;
+  }
+  else if (b1 && !b2 && !b3)
+  {
+    // B W W - pivot right
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTR;
+  }
+  else if (!b1 && b2 && b3)
+  {
+    // W B B - pivot hard left
+    cmd_speed = const_motor_full_speed;
+    cmd_move = PVTL;
+  }
+  else if (!b1 && b2 && !b3)
+  {
+    // W B W - junction - decision - to be implemented
+    cmd_speed = const_motor_half_speed;
+    cmd_move = FWRD;
+  }
+  else if (!b1 && !b2 && b3)
+  {
+    // W W B - pivot left
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTL;
+  }
+  else if (!b1 && !b2 && !b3)
+  {
+    // W W W - junction - rightward bias
+    cmd_speed = const_motor_half_speed;
+    cmd_move = PVTR;
+    //line_follow_complete = true;
+  }
+  else
+  {
+    // Undefined reading set
+    Serial.println("Undefined optoreflector state:");
+    Serial.print(b1);
+    Serial.print(" ");
+    Serial.print(b2);
+    Serial.print(" ");
+    Serial.println(b3);
+
+    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_serial, String(b1).c_str());
+    mqc.publish(const_topic_bot_serial, String(b2).c_str());
+    mqc.publish(const_topic_bot_serial, String(b3).c_str());
+  }
+}
+
+/*
 void simpleLineFollow()
 {
   if (optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold))
@@ -448,11 +619,15 @@ void simpleLineFollow()
     cmd_move = PVTR;
   }
 }
+*/
 
 // PROGRAM
 
 void setup()
 {
+  // Reset state
+  //task_state = -1;
+
   beginSerial();
   setupDriveMotors();
   setupWifi();
@@ -462,7 +637,11 @@ void setup()
   setupUltrasound();
   setupOptors();
 
-  // Wait till button pressed to start
+  // Send 0 state to driver
+  task_state = 0;
+  mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+
+  // Wait for start button
   Serial.println("Waiting for start button push...");
   mqc.publish(const_topic_bot_serial, "Waiting for start button push...");
   while (!startBtnPressed())
@@ -471,10 +650,10 @@ void setup()
     mqc.loop();
   }
 
+  task_state = 1;
   Serial.println("Starting main loop");
-  mqc.publish(const_topic_bot_serial, "Starting main loop");
-
-  task_state = 3;
+  mqc.publish(const_topic_bot_serial, "Starting main loop");  
+  mqc.publish(const_topic_bot_stt, String(task_state).c_str());
 
 }
 
@@ -499,15 +678,19 @@ void loop()
       else {
         // Reached border: drive forward to clear border
         if (cmd_move == STOP) {
-          temp_drive_timestore = millis();
-          temp_drive_interval = 1000;
+          temp_timestore = millis();
+          temp_time_interval = 2000;
           cmd_move = FWRD;
         }
         else {
           // Task state increment
-          if (millis() - temp_drive_timestore > temp_drive_interval) {
+          if (millis() - temp_timestore > temp_time_interval) {
             cmd_move = STOP;
+
             task_state = 2;
+            mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+
+            line_follow_complete = false;
           }
         }        
       }
@@ -516,19 +699,122 @@ void loop()
     case 2:
       // Line following to enter cave
       if (!line_follow_complete) {
-        lineFollow();
+        lineFollow2();
       }
       else {
         // Reached cave entry line
         cmd_move = STOP;
-        mqc.publish(const_topic_bot_stt, "vector_ready");
+        
         task_state = 3;
+        mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+
+        line_follow_complete = false;
       }
       break;
 
     case 3:
-      // CV vector drive
+      // Computer vision vector control (navigate to victims)
+      cmd_speed = const_motor_half_speed;
       //collisionAvoidance();      
+      break;
+
+    case 4:
+      // Health detection wait
+      cmd_move = STOP;
+
+      if (temp_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 3000;
+        temp_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          // Health detection wait complete
+          temp_wait_complete = true;
+
+          task_state = 5;
+          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+        }
+      }
+      
+      break;
+
+    case 5:
+      // Computer vision vector control (positioning to load)
+      cmd_speed = const_motor_half_speed;
+      //collisionAvoidance(); 
+      break;
+
+    case 6:
+      // Load victim
+      // To be implemented. Currently just waits some time.
+      cmd_move = STOP;
+
+      if (victim_pickup_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 5000;
+        temp_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          // Pickup wait complete
+          temp_wait_complete = true;
+
+          task_state = 7;
+          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+        }
+      }
+
+      break;
+
+    case 7:
+      // Computer vision vector control (navigate to cave exit)
+      cmd_speed = const_motor_half_speed;
+      //collisionAvoidance(); 
+      break;
+
+    case 8:
+      // Line follow cave exit to triage box
+      if (!line_follow_complete) {
+        lineFollow3();
+      }
+      else {
+        // Reached triage box line (should never get here)
+        cmd_move = STOP;
+        
+        task_state = 9;
+        mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+
+        line_follow_complete = false;
+      }
+      break;
+
+    case 9:
+      // Computer vision vector control (reposition for unloading)
+      cmd_speed = const_motor_half_speed;
+      //collisionAvoidance(); 
+      break;
+
+    case 10:
+      // Unload victim
+      // To be implemented. Currently just waits some time.
+      cmd_move = STOP;
+
+      if (victim_unload_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 5000;
+        victim_unload_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          // Victim unload wait complete
+          victim_unload_wait_complete = true;
+
+          task_state = 2;
+          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+        }
+      }
+
       break;
   }
 

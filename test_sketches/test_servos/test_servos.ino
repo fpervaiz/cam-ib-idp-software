@@ -1,37 +1,52 @@
 #include <Servo.h>
 
-Servo s_arm;
-Servo s_tray;
+Servo a;
+Servo t;
 
-int pos_arm = 0;
-int pos_tray = 0;
+int a_pos = 0;
+int t_pos = 0;
 
-void setup() {
-  Serial.begin(115200);
-  s_arm.attach(9);
-  s_tray.attach(10);
-  s_arm.write(20);
-  s_tray.write(20);
+int val;
+
+void setup()
+{
+  Serial.begin(9600);
+
+  a.attach(9);
+  t.attach(10);
 }
 
-void loop() {
-  /*for (int pos = 20; pos <= 160; pos += 1) {
-    s_arm.write(pos);
-    s_tray.write(pos);
-    Serial.println(pos);
-    delay(15);
+void loop()
+{
+  if (Serial.available())
+  {
+
+    int val = Serial.read();
+
+    if (val == 'd') {
+      a_pos += 1;
+      a.write(a_pos);
+    }
+
+    if (val == 'a') {
+      a_pos -= 1;
+      a.write(a_pos);
+    }
+
+    if (val == 'q') {
+      t_pos += 1;
+      t.write(t_pos);
+    }
+
+    if (val == 'e') {
+      t_pos -= 1;
+      t.write(t_pos);
+    }
     
+    Serial.println(a_pos);
+    Serial.println(t_pos);
+
+    delay(15);    
+
   }
-  for (int pos = 160; pos >= 20; pos -= 1) {
-    s_arm.write(pos);
-    s_tray.write(pos);
-    Serial.println(pos);
-    delay(15);
-  }*/
-  /*s_arm.write(20);
-  s_tray.write(20);
-  delay(2000);
-  s_arm.write(180);
-  s_tray.write(180);
-  delay(2000);*/
 }

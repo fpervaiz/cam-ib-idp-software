@@ -1,7 +1,10 @@
 import numpy as np
+import paho.mqtt.client as mqtt
+
 import cv2
-from cv2 import aruco
 import time
+
+from cv2 import aruco
 
 bot_width = 0.40
 bot_front = 0.75
@@ -11,12 +14,52 @@ victim_lower = np.array([35, 70, 150], np.uint8)
 victim_upper = np.array([60, 255, 255], np.uint8)
 
 victim_detection_region = np.array([[230, 25],[750, 25],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
+triage_region = np.array([[810, 570], [1000, 573], [1000, 718], [808, 718]], np.int32).reshape((-1,1,2))
 
 victim_contour_min_area = 25
 
 victims = [(0,0), (0,0), (0,0), (0,0)]
 
 send_vectors = False
+stage = -1
+prev_cmd_move = -1
+
+angle_threshold = 10
+angle_threshold_pickup = 5
+
+point_cave_exit_positioning = np.array([480, 335])
+point_cave_exit_line = np.array([545, 335])
+
+topic_bot_stt = "/idp/bot/stt"
+topic_bot_serial = "/idp/bot/serial"
+topic_bot_cmd = "/idp/bot/cmd"
+topic_bot_stage = "/idp/bot/stage"
+
+font = cv2.FONT_HERSHEY_SIMPLEX
+
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+            1.5707963267948966
+            >>> angle_between((1, 0, 0), (1, 0, 0))
+            0.0
+            >>> angle_between((1, 0, 0), (-1, 0, 0))
+            3.141592653589793
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+
+def unit_cross_prod(v1, v2):
+    return np.cross(unit_vector(v1), unit_vector(v2))
+
 
 def bot_width_trackbar(val):
     global bot_width
@@ -42,32 +85,85 @@ def print_mouse_coords(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONUP:
         print([x, y])
 
-def unit_vector(vector):
-    """ Returns the unit vector of the vector.  """
-    return vector / np.linalg.norm(vector)
+def on_disconnect(client, userdata,rc=0):
+    #logging.debug("DisConnected result code "+str(rc))
+    client.loop_stop()
+    
+def on_message(client, userdata, message):
+    global stage
 
-def angle_between(v1, v2):
-    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+    payload = str(message.payload.decode("utf-8"))
+    
+    print("message received ", payload)
+    print("message topic=", message.topic)
+    print("message qos=", message.qos)
+    print("message retain flag=", message.retain)
+    
 
-            >>> angle_between((1, 0, 0), (0, 1, 0))
-            1.5707963267948966
-            >>> angle_between((1, 0, 0), (1, 0, 0))
-            0.0
-            >>> angle_between((1, 0, 0), (-1, 0, 0))
-            3.141592653589793
-    """
-    v1_u = unit_vector(v1)
-    v2_u = unit_vector(v2)
-    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+    if message.topic == topic_bot_stt:
+        if int(payload) == 0:#and stage == -1:
+            # Arduino start ping
+            stage = 0
 
+        elif int(payload) == 1 and stage == 0:
+            # Exiting start box
+            stage = 1
+            
+        elif int(payload) == 2 and stage == 1:
+            # Line following - start to cave entry
+            stage = 2
 
+        elif int(payload) == 3 and stage == 2:
+            # Search and pick up
+            stage = 3
+
+        elif int(payload) == 4 and stage == 3:
+            # Detecting victim health
+            stage = 4
+
+        elif int(payload) == 5 and stage == 4:
+            # Loading victim
+            stage = 5
+
+        elif int(payload) == 6 and stage == 5:
+            # Navigating to cave exit
+            stage = 6
+            
+        elif int(payload) == 7 and stage == 6:
+            # Bot line following - cave exit to triage area
+            stage = 7
+
+        elif int(payload) == 8 and stage == 7:
+            # Unloading victim
+            stage = 8
+
+        else:
+            # Undefined
+            pass
+            
+        #print("Entered stage {}".format(stage))
+
+def send_move_command(curr, prev):
+    if not curr == prev:
+        mqc.publish(topic_bot_cmd, curr)
+        prev = curr
+        print("Command move: {}".format(curr))
+
+mqc = mqtt.Client("MASTER")
+mqc.connect("192.168.137.1")
+mqc.on_message = on_message
+mqc.on_disconnect = on_disconnect
+mqc.loop_start()
+
+mqc.subscribe(topic_bot_stt)
+#mqc.subscribe(topic_bot_serial)
+'''
 cv2.namedWindow('Bars')
 cv2.createTrackbar('Width', 'Bars', int(bot_width*100), 200, bot_width_trackbar)
 cv2.createTrackbar('Front', 'Bars', int(bot_front*100), 200, bot_front_trackbar)
 cv2.createTrackbar('Rear', 'Bars', int(bot_rear*100), 200, bot_rear_trackbar)
 cv2.createTrackbar('Min Area', 'Bars', int(victim_contour_min_area), 200, vic_min_area)
-
-
+'''
 cv2.namedWindow('Vision')
 cv2.setMouseCallback('Vision', print_mouse_coords)
 
@@ -78,6 +174,8 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 while True:
+    ### FRAME UPDATE ###
+
     _, frame = cap.read()
     
     out = frame.copy()
@@ -164,6 +262,7 @@ while True:
         cv2.line(out, tuple(b3), tuple(b4), (255, 0, 0), 2)
         cv2.line(out, tuple(b4), tuple(b1), (255, 0, 0), 2)
 
+    '''
     if send_vectors:
         cv2.line(out, victims[0], tuple(m1), (0, 255, 255), 2)
         target_vector = np.array(victims[0]) - np.array(tuple(m1))
@@ -172,14 +271,187 @@ while True:
 
         #print(angle_error * 180/np.pi)
 
-        '''
+        
         if angle_error > angle_threshold:
             if 
 
-        '''
+    '''
+
+    ### DRIVING ###
+
+    if stage == -1:
+        status = "Waiting for Arduino..."
+        has_cmd = "Arduino"
+    elif stage == 0:
+        status = "Waiting for start button push..."
+        has_cmd = "Arduino"
+    elif stage == 1:
+        status = "Bot line following - exiting start box"
+        has_cmd = "Arduino"
+    elif stage == 2:
+        status = "Bot line following - start box to cave entrance"
+        has_cmd = "Arduino"
+
+    elif stage == 3:
+        status = "Navigating to victim"
+        has_cmd = "Python"
+        
+        if victims:
+            cv2.line(out, victims[0], tuple(m1), (0, 255, 255), 2)
+            target_vector = np.array(tuple(m1)) - np.array(victims[0])
+
+            angle_error = np.degrees(
+                angle_between(-target_vector, central_parallel))
+            #print("Angle error: {}".format(angle_error))
+
+            if angle_error > angle_threshold_pickup:
+                if unit_cross_prod(target_vector, central_parallel) > 0:
+                    cmd_move = 6  # Clockwise - rotate right
+                else:
+                    cmd_move = 5  # Anticlockwise - rotate left
+            else:
+                distance = np.linalg.norm(target_vector)
+                if distance > 30:
+                    cmd_move = 2  # Forward
+                else:
+                    cmd_move = 0  # Stop
+
+                    # Move to detection stage
+                    stage = 4
+                    mqc.publish(topic_bot_stage, stage)
+
+            send_move_command(cmd_move, prev_cmd_move)
+
+    elif stage == 4:
+        status = "Detecting victim health"
+        has_cmd = "Arduino"
+    
+    elif stage == 5:
+        status = "Positioning to load victim"
+        has_cmd = "Python"
+
+        distance = np.linalg.norm(target_vector)
+
+        if distance < 50:
+            cmd_move = 1 # Reverse away for turn
+        else:
+            angle_error = np.degrees(
+                angle_between(target_vector, central_parallel))
+            
+            if angle_error > angle_threshold:
+                # Turn around
+                if unit_cross_prod(target_vector, central_parallel) > 0:
+                    cmd_move = 6  # Clockwise - rotate right
+                else:
+                    cmd_move = 5  # Anticlockwise - rotate left
+            else:
+                # Reverse towards victim for pickup
+                if distance > 5:
+                    cmd_move = 1
+                else:
+                    # Ready to pick up
+                    cmd_move = 0
+
+                    # Move to load victim stage
+                    stage = 6
+                    mqc.publish(topic_bot_stage, stage)
+
+        send_move_command(cmd_move, prev_cmd_move)
+    
+    elif stage == 6:
+        status = "Loading victim"
+        has_cmd = "Arduino"
+    
+    elif stage == 7:
+        status = "Navigating to cave exit"
+        has_cmd = "Python"
+
+        cv2.line(out, tuple(m1), tuple(point_cave_exit_line),(0, 255, 255), 2)
+        target_vector = np.array(tuple(m1)) - point_cave_exit_line
+
+        angle_error = np.degrees(angle_between(-target_vector, central_parallel))
+        if angle_error > angle_threshold:
+                if unit_cross_prod(target_vector, central_parallel) > 0:
+                    cmd_move = 6  # Clockwise - rotate right
+                else:
+                    cmd_move = 5  # Anticlockwise - rotate left
+        else:
+                distance = np.linalg.norm(target_vector)
+                if distance > 5:
+                    cmd_move = 2  # Forward
+                else:
+                    cmd_move = 0  # Stop
+
+                    # Turn parallel to exit line
+                    target_vector = np.array([1, 0])
+                    angle_error = np.degrees(angle_between(-target_vector, central_parallel))
+                    if angle_error > angle_threshold:
+                        if unit_cross_prod(target_vector, central_parallel) > 0:
+                            cmd_move = 4  # Clockwise - pivot right
+                        else:
+                            cmd_move = 3  # Anticlockwise - pivot left
+                    else:
+                        # Lined up with exit line
+                        cmd_move = 0 # Stop
+
+                        # Move to cave exit line follow stage
+                        stage = 8
+                        mqc.publish(topic_bot_stage, stage)
+
+    elif stage == 8:
+        status = "Bot line following - cave exit to triage area"
+        has_cmd = "Arduino"
+
+        b_front_midpoint = tuple(0.5*(np.array(b1) + np.array(b2)))
+
+        if cv2.pointPolygonTest(triage_region, b_front_midpoint, False) == 1.0:
+            # Entered triage region
+            cmd_move = 0 # Stop
+
+            # Move to reposition to unload stage
+            stage = 9
+            mqc.publish(topic_bot_stage, stage)
+
+    elif stage == 9:
+        status = "Repositioning for unloading"
+        has_cmd = "Python"
+
+        target_vector = np.array([0, 1])
+        angle_error = np.degrees(angle_between(-target_vector, central_parallel))
+
+        if angle_error > angle_threshold:
+            if unit_cross_prod(target_vector, central_parallel) > 0:
+                cmd_move = 6  # Clockwise - rotate right
+            else:
+                cmd_move = 5  # Anticlockwise - rotate left
+        else:
+            # Lined up
+            cmd_move = 0 # Stop
+
+            # Move to unload stage
+            stage = 10
+            mqc.publish(topic_bot_stage, stage)
+
+    elif stage == 10:
+        status = "Unloading victim"
+        has_cmd = "Arduino"
+
+    elif stage == 11:
+        status = "Returning to start box"
+        has_cmd = "Python"
+    
+    else:
+        status = "Undefined"
+    
+
+    ### DISPLAY ###
+
+    cv2.putText(out, "{} {}".format(stage, status), (50, 50), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+    cv2.putText(out, "{} in command".format(has_cmd), (50, 75), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
 
     #frame = cv2.flip(frame, 1)
     #display_frame = cv2.resize(frame, None, fx=0.8, fy=0.8)
+
     cv2.imshow("Vision", out)
 
     key = cv2.waitKey(1)
@@ -193,5 +465,6 @@ while True:
     elif key & 0xFF == ord('q'):
         break
 
+mqc.loop_stop()
 cap.release()
 cv2.destroyAllWindows()

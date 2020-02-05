@@ -43,13 +43,6 @@
 #define const_topic_bot_cmd_move "/idp/bot/cmd_move"
 #define const_topic_bot_cmd_speed "/idp/bot/cmd_speed"
 
-
-topic_bot_cmd_stage = "/idp/bot/cmd_stage"
-topic_bot_stt_stage = "/idp/bot/stt_stage"
-topic_bot_debug = "/idp/bot/debug"
-topic_bot_cmd_move = "/idp/bot/move"
-topic_bot_cmd_speed = "/idp/bot/speed"
-
 // Movement command definitions
 
 #define STOP 0

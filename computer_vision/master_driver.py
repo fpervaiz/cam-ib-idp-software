@@ -30,10 +30,11 @@ angle_threshold_pickup = 5
 point_cave_exit_positioning = np.array([480, 335])
 point_cave_exit_line = np.array([545, 335])
 
-topic_bot_stt = "/idp/bot/stt"
-topic_bot_serial = "/idp/bot/serial"
-topic_bot_cmd = "/idp/bot/cmd"
-topic_bot_stage = "/idp/bot/stage"
+topic_bot_cmd_stage = "/idp/bot/cmd_stage"
+topic_bot_stt_stage = "/idp/bot/stt_stage"
+topic_bot_debug = "/idp/bot/debug"
+topic_bot_cmd_move = "/idp/bot/move"
+topic_bot_cmd_speed = "/idp/bot/speed"
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -96,7 +97,7 @@ def on_message(client, userdata, message):
     
     print("MQTT received: message topic=", message.topic, "payload=", payload, "\n")
 
-    if message.topic == topic_bot_stt:
+    if message.topic == topic_bot_stt_stage:
         if int(payload) == 0:#and stage == -1:
             # Arduino start ping
             stage = 0
@@ -142,7 +143,7 @@ def on_message(client, userdata, message):
 def send_move_command(curr, prev):
     global prev_cmd_move
     if not curr == prev:
-        mqc.publish(topic_bot_cmd, curr)
+        mqc.publish(topic_bot_cmd_move, curr)
         prev_cmd_move = curr
         print("Command move: {}".format(curr))
 
@@ -152,7 +153,7 @@ mqc.on_message = on_message
 mqc.on_disconnect = on_disconnect
 mqc.loop_start()
 
-mqc.subscribe(topic_bot_stt)
+mqc.subscribe(topic_bot_stt_stage)
 #mqc.subscribe(topic_bot_serial)
 '''
 cv2.namedWindow('Bars')
@@ -191,7 +192,7 @@ while True:
     victim_index = 0
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
-        if area > 25:
+        if area > 20:
             x, y, w, h = cv2.boundingRect(contour)
             if cv2.pointPolygonTest(victim_detection_region, (x, y), False) == 1.0:        
                 cv2.rectangle(out, (x, y), (x+w, y+h), (255, 0, 0), 3)
@@ -298,7 +299,7 @@ while True:
             target_vector = np.array(tuple(m1)) - np.array(victims[0])
 
             angle_error = np.degrees(
-                angle_between(-target_vector, central_parallel))
+                angle_between(target_vector, central_parallel))
             #print("Angle error: {}".format(angle_error))
 
             if angle_error > angle_threshold_pickup:
@@ -315,7 +316,7 @@ while True:
 
                     # Move to detection stage
                     stage = 4
-                    mqc.publish(topic_bot_stage, stage)
+                    mqc.publish(topic_bot_cmd_stage, stage)
 
             send_move_command(cmd_move, prev_cmd_move)
 
@@ -351,7 +352,7 @@ while True:
 
                     # Move to load victim stage
                     stage = 6
-                    mqc.publish(topic_bot_stage, stage)
+                    mqc.publish(topic_bot_cmd_stage, stage)
 
         send_move_command(cmd_move, prev_cmd_move)
     
@@ -381,7 +382,7 @@ while True:
 
                     # Turn parallel to exit line
                     target_vector = np.array([1, 0])
-                    angle_error = np.degrees(angle_between(-target_vector, central_parallel))
+                    angle_error = np.degrees(angle_between(target_vector, central_parallel))
                     if angle_error > angle_threshold:
                         if unit_cross_prod(target_vector, central_parallel) > 0:
                             cmd_move = 4  # Clockwise - pivot right
@@ -393,7 +394,7 @@ while True:
 
                         # Move to cave exit line follow stage
                         stage = 8
-                        mqc.publish(topic_bot_stage, stage)
+                        mqc.publish(topic_bot_cmd_stage, stage)
 
     elif stage == 8:
         status = "Bot line following - cave exit to triage area"
@@ -407,7 +408,7 @@ while True:
 
             # Move to reposition to unload stage
             stage = 9
-            mqc.publish(topic_bot_stage, stage)
+            mqc.publish(topic_bot_cmd_stage, stage)
 
     elif stage == 9:
         status = "Repositioning for unloading"
@@ -427,7 +428,7 @@ while True:
 
             # Move to unload stage
             stage = 10
-            mqc.publish(topic_bot_stage, stage)
+            mqc.publish(topic_bot_cmd_stage, stage)
 
     elif stage == 10:
         status = "Unloading victim"

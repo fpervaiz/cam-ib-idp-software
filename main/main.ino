@@ -37,10 +37,18 @@
 #define const_sens_optor_working_minimum 5
 #define const_sens_optor_working_maximum 1023
 
-#define const_topic_bot_serial "/idp/bot/serial"
-#define const_topic_bot_cmd "/idp/bot/cmd"
-#define const_topic_bot_stt "/idp/bot/stt"
-#define const_topic_bot_stage "/idp/bot/stage"
+#define const_topic_bot_cmd_stage "/idp/bot/cmd_stage"
+#define const_topic_bot_stt_stage "/idp/bot/stt_stage"
+#define const_topic_bot_debug "/idp/bot/debug"
+#define const_topic_bot_cmd_move "/idp/bot/cmd_move"
+#define const_topic_bot_cmd_speed "/idp/bot/cmd_speed"
+
+
+topic_bot_cmd_stage = "/idp/bot/cmd_stage"
+topic_bot_stt_stage = "/idp/bot/stt_stage"
+topic_bot_debug = "/idp/bot/debug"
+topic_bot_cmd_move = "/idp/bot/move"
+topic_bot_cmd_speed = "/idp/bot/speed"
 
 // Movement command definitions
 
@@ -67,9 +75,11 @@ unsigned long temp_timestore = 0;
 int temp_time_interval;
 bool temp_wait_complete = true;
 
-int cmd_move = 0; // 0 = stop, 1 = forward; 2 = backward; 3 = pivot left; 4 = pivot right; 5 = rotate left; 6 = rotate right
+int cmd_move = STOP;
 int cmd_move_prev = cmd_move;
+
 int cmd_speed = 255;
+int cmd_speed_prev = cmd_speed;
 
 bool line_follow_complete = false;
 
@@ -159,36 +169,53 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
     char buf_topic[str_topic_len];
     str_topic.toCharArray(buf_topic, str_topic_len);
 
-    mqc.publish(const_topic_bot_serial, "Recieved message");
-    mqc.publish(const_topic_bot_serial, buf_topic);
+    mqc.publish(const_topic_bot_debug, "Recieved message");
+    mqc.publish(const_topic_bot_debug, buf_topic);
 
     for (int i = 0; i < length; i++)
     {
       Serial.print((char)payload[i]);
-      //mqc.publish(const_topic_bot_serial, String((char)payload[i]).c_str());
+      //mqc.publish(const_topic_bot_debug, String((char)payload[i]).c_str());
     }
 
     Serial.println();
-    //mqc.publish(const_topic_bot_serial, " ");
+    //mqc.publish(const_topic_bot_debug, " ");
 
-    if (strcmp(buf_topic, const_topic_bot_cmd) == 0) {
+    if (strcmp(buf_topic, const_topic_bot_cmd_move) == 0) {
       cmd_move = payload_val;
 
       Serial.print("Set cmd_move to ");
-      Serial.print(payload_val);
-      Serial.print(" ");
-      Serial.println(cmd_move);
+      Serial.print(cmd_move);
+      Serial.print(" - received ");
+      Serial.println(payload_val);
 
-      mqc.publish(const_topic_bot_serial, "Set command move to:");
-      mqc.publish(const_topic_bot_serial, String(cmd_move).c_str());
+      mqc.publish(const_topic_bot_debug, "Set command move to:");
+      mqc.publish(const_topic_bot_debug, String(cmd_move).c_str());
     }
-    else if (strcmp(buf_topic, const_topic_bot_stage) == 0) {
+    else if (strcmp(buf_topic, const_topic_bot_cmd_speed) == 0) {
+      cmd_speed = payload_val;
+
+      Serial.print("Set cmd_speed to ");
+      Serial.print(cmd_speed);
+      Serial.print(" - received ");
+      Serial.println(payload_val);
+
+      mqc.publish(const_topic_bot_debug, "Set command speed to:");
+      mqc.publish(const_topic_bot_debug, String(cmd_speed).c_str());
+    }
+    else if (strcmp(buf_topic, const_topic_bot_cmd_stage) == 0) {
       task_state = payload_val;
-      mqc.publish(const_topic_bot_serial, "Set task state to:");
-      mqc.publish(const_topic_bot_serial, String(task_state).c_str());
+
+      Serial.print("Set task_state to ");
+      Serial.print(task_state);
+      Serial.print(" - received ");
+      Serial.println(payload_val);
+
+      mqc.publish(const_topic_bot_debug, "Set task state to:");
+      mqc.publish(const_topic_bot_debug, String(task_state).c_str());
     }
     else {
-      mqc.publish(const_topic_bot_serial, "No match found for topic");
+      mqc.publish(const_topic_bot_debug, "No match found for topic");
     }
     
 }
@@ -206,16 +233,17 @@ void connectMqtt()
         {
             Serial.println("connected");
             // Once connected, publish an announcement...
-            mqc.publish(const_topic_bot_serial, " ");
-            mqc.publish(const_topic_bot_serial, "-----------------------------------");
-            mqc.publish(const_topic_bot_serial, "L101 Main Bot Program");
-            mqc.publish(const_topic_bot_serial, "Arduino connected.");
+            mqc.publish(const_topic_bot_debug, " ");
+            mqc.publish(const_topic_bot_debug, "-----------------------------------");
+            mqc.publish(const_topic_bot_debug, "L101 Main Bot Program");
+            mqc.publish(const_topic_bot_debug, "Arduino connected.");
 
-            //mqc.publish(const_topic_bot_stt, task_state);
+            //mqc.publish(const_topic_bot_stt_stage, task_state);
 
             // ... and subscribe
-            mqc.subscribe(const_topic_bot_cmd);
-            mqc.subscribe(const_topic_bot_stage);
+            mqc.subscribe(const_topic_bot_cmd_move);
+            mqc.subscribe(const_topic_bot_cmd_speed);
+            mqc.subscribe(const_topic_bot_cmd_stage);
 
             cmd_move = temp;
         }
@@ -308,13 +336,13 @@ void setupOptors()
     Serial.print(" ");
     Serial.println(r3);
 
-    mqc.publish(const_topic_bot_serial, "Optoreflector readings outside working range!");
-    mqc.publish(const_topic_bot_serial, String(r1).c_str());
-    mqc.publish(const_topic_bot_serial, String(r2).c_str());
-    mqc.publish(const_topic_bot_serial, String(r3).c_str());
+    mqc.publish(const_topic_bot_debug, "Optoreflector readings outside working range!");
+    mqc.publish(const_topic_bot_debug, String(r1).c_str());
+    mqc.publish(const_topic_bot_debug, String(r2).c_str());
+    mqc.publish(const_topic_bot_debug, String(r3).c_str());
     
     Serial.println("EXECUTION HALTED");
-    mqc.publish(const_topic_bot_serial, "EXECUTION HALTED");
+    mqc.publish(const_topic_bot_debug, "EXECUTION HALTED");
 
     while (true)
     {
@@ -329,10 +357,10 @@ void setupOptors()
     Serial.print(" ");
     Serial.println(r3);
 
-    mqc.publish(const_topic_bot_serial, "All optoreflector readings inside range.");
-    mqc.publish(const_topic_bot_serial, String(r1).c_str());
-    mqc.publish(const_topic_bot_serial, String(r2).c_str());
-    mqc.publish(const_topic_bot_serial, String(r3).c_str());
+    mqc.publish(const_topic_bot_debug, "All optoreflector readings inside range.");
+    mqc.publish(const_topic_bot_debug, String(r1).c_str());
+    mqc.publish(const_topic_bot_debug, String(r2).c_str());
+    mqc.publish(const_topic_bot_debug, String(r3).c_str());
   }
 }
 
@@ -368,13 +396,10 @@ void toggleMoveIndicator()
 
 void driveMotors()
 {
-  if (cmd_move != cmd_move_prev)
+  if (cmd_move != cmd_move_prev || cmd_speed != cmd_speed_prev)
   {
     cmd_move_prev = cmd_move;
-
-    char cmd_stt[16];
-    itoa(cmd_move, cmd_stt, 10);
-    //mqc.publish(const_topic_bot_stt, cmd_stt);
+    cmd_speed_prev = cmd_speed;
 
     switch (cmd_move)
     {
@@ -442,7 +467,7 @@ void lineFollow()
     // B B B - lost
     cmd_move = STOP;
     Serial.println("Lost.");
-    mqc.publish(const_topic_bot_serial, "Lost.");
+    mqc.publish(const_topic_bot_debug, "Lost.");
   }
   else if (b1 && b2 && !b3)
   {
@@ -497,10 +522,10 @@ void lineFollow()
     Serial.print(" ");
     Serial.println(b3);
 
-    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
-    mqc.publish(const_topic_bot_serial, String(b1).c_str());
-    mqc.publish(const_topic_bot_serial, String(b2).c_str());
-    mqc.publish(const_topic_bot_serial, String(b3).c_str());
+    mqc.publish(const_topic_bot_debug, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_debug, String(b1).c_str());
+    mqc.publish(const_topic_bot_debug, String(b2).c_str());
+    mqc.publish(const_topic_bot_debug, String(b3).c_str());
   }
 }
 
@@ -516,7 +541,7 @@ void lineFollow2()
     cmd_speed = const_motor_full_speed;
     cmd_move = STOP;
     Serial.println("Complete.");
-    mqc.publish(const_topic_bot_serial, "lf2 complete.");
+    mqc.publish(const_topic_bot_debug, "lf2 complete.");
     line_follow_complete = true;
   }
   else if (b1 && b2 && !b3)
@@ -572,10 +597,10 @@ void lineFollow2()
     Serial.print(" ");
     Serial.println(b3);
 
-    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
-    mqc.publish(const_topic_bot_serial, String(b1).c_str());
-    mqc.publish(const_topic_bot_serial, String(b2).c_str());
-    mqc.publish(const_topic_bot_serial, String(b3).c_str());
+    mqc.publish(const_topic_bot_debug, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_debug, String(b1).c_str());
+    mqc.publish(const_topic_bot_debug, String(b2).c_str());
+    mqc.publish(const_topic_bot_debug, String(b3).c_str());
   }
 }
 
@@ -590,7 +615,7 @@ void lineFollow3()
     // B B B - lost
     cmd_move = STOP;
     Serial.println("Lost.");
-    mqc.publish(const_topic_bot_serial, "Lost.");
+    mqc.publish(const_topic_bot_debug, "Lost.");
   }
   else if (b1 && b2 && !b3)
   {
@@ -645,10 +670,10 @@ void lineFollow3()
     Serial.print(" ");
     Serial.println(b3);
 
-    mqc.publish(const_topic_bot_serial, "Undefined optoreflector state:");
-    mqc.publish(const_topic_bot_serial, String(b1).c_str());
-    mqc.publish(const_topic_bot_serial, String(b2).c_str());
-    mqc.publish(const_topic_bot_serial, String(b3).c_str());
+    mqc.publish(const_topic_bot_debug, "Undefined optoreflector state:");
+    mqc.publish(const_topic_bot_debug, String(b1).c_str());
+    mqc.publish(const_topic_bot_debug, String(b2).c_str());
+    mqc.publish(const_topic_bot_debug, String(b3).c_str());
   }
 }
 
@@ -688,11 +713,11 @@ void setup()
 
   // Send 0 state to driver
   task_state = 0;
-  mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+  mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
   // Wait for start button
   Serial.println("Waiting for start button push...");
-  mqc.publish(const_topic_bot_serial, "Waiting for start button push...");
+  mqc.publish(const_topic_bot_debug, "Waiting for start button push...");
   while (!startBtnPressed())
   {
     delay(100);
@@ -701,8 +726,8 @@ void setup()
 
   task_state = 1;
   Serial.println("Starting main loop");
-  mqc.publish(const_topic_bot_serial, "Starting main loop");  
-  mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+  mqc.publish(const_topic_bot_debug, "Starting main loop");  
+  mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
 }
 
@@ -710,9 +735,15 @@ void loop()
 {
   unsigned long current_millis = millis();
 
-  if (current_millis - prev_move_indicator_millis >= const_move_indicator_period)
-  {
-    toggleMoveIndicator();
+  // Solid amber during health detection otherwise blink amber 2Hz while moving
+  if (task_state == 4 && !digitalRead(pin_indicator_move_led)) {
+    digitalWrite(pin_indicator_move_led, 1);
+  }
+  else {
+    if (current_millis - prev_move_indicator_millis >= const_move_indicator_period)
+    {
+      toggleMoveIndicator();
+    }
   }
 
   switch (task_state) {
@@ -737,7 +768,7 @@ void loop()
             cmd_move = STOP;
 
             task_state = 2;
-            mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+            mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
             line_follow_complete = false;
           }
@@ -766,7 +797,7 @@ void loop()
             line_follow_complete = false;
         
             task_state = 3;
-            mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+            mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
           }
         }
@@ -777,7 +808,7 @@ void loop()
       // Computer vision vector control (navigate to victims)
       if (cmd_speed != const_motor_half_speed) {
         cmd_speed = const_motor_half_speed;
-        mqc.publish(const_topic_bot_serial, "Set computer vision control speed");
+        mqc.publish(const_topic_bot_debug, "Set computer vision control speed");
       }
       //collisionAvoidance();      
       break;
@@ -797,7 +828,7 @@ void loop()
           temp_wait_complete = true;
 
           task_state = 5;
-          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+          mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
       
@@ -825,7 +856,7 @@ void loop()
           temp_wait_complete = true;
 
           task_state = 7;
-          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+          mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
 
@@ -847,7 +878,7 @@ void loop()
         cmd_move = STOP;
         
         task_state = 9;
-        mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+        mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
         line_follow_complete = false;
       }
@@ -875,7 +906,7 @@ void loop()
           temp_wait_complete = true;
 
           task_state = 2;
-          mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+          mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
 
@@ -890,8 +921,8 @@ void loop()
   else {
     // Search
     Serial.println("Line follow complete. Beginning search and rescue.");
-    mqc.publish(const_topic_bot_serial, "Line follow complete. Beginning search and rescue.");
-    mqc.publish(const_topic_bot_stt, "lf_complete");
+    mqc.publish(const_topic_bot_debug, "Line follow complete. Beginning search and rescue.");
+    mqc.publish(const_topic_bot_stt_stage, "lf_complete");
   }
   */
   

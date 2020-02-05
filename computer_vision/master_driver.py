@@ -94,11 +94,7 @@ def on_message(client, userdata, message):
 
     payload = str(message.payload.decode("utf-8"))
     
-    print("message received ", payload)
-    print("message topic=", message.topic)
-    print("message qos=", message.qos)
-    print("message retain flag=", message.retain)
-    
+    print("MQTT received: message topic=", message.topic, "payload=", payload, "\n")
 
     if message.topic == topic_bot_stt:
         if int(payload) == 0:#and stage == -1:
@@ -144,9 +140,10 @@ def on_message(client, userdata, message):
         #print("Entered stage {}".format(stage))
 
 def send_move_command(curr, prev):
+    global prev_cmd_move
     if not curr == prev:
         mqc.publish(topic_bot_cmd, curr)
-        prev = curr
+        prev_cmd_move = curr
         print("Command move: {}".format(curr))
 
 mqc = mqtt.Client("MASTER")

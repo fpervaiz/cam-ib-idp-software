@@ -5,6 +5,7 @@
 #include <Adafruit_MotorShield.h>
 #include <PubSubClient.h>
 #include <WiFiNINA.h>
+//#include <VarSpeedServo.h>
 
 // DEFINITIONS
 
@@ -25,13 +26,16 @@
 #define const_motor_full_speed 255
 #define const_motor_half_speed 128
 
+#define port_servo_arm 9
+#define port_servo_tray 10
+
 #define const_move_indicator_period 250
 
-#define const_sens_optor_l_threshold 70 // 500
-#define const_sens_optor_c_threshold 70 // 250
-#define const_sens_optor_r_threshold 70 // 350
-#define const_sens_optor_working_minimum 10
-#define const_sens_optor_working_maximum 1000
+#define const_sens_optor_l_threshold 128 // 500
+#define const_sens_optor_c_threshold 128 // 250
+#define const_sens_optor_r_threshold 64 // 350
+#define const_sens_optor_working_minimum 5
+#define const_sens_optor_working_maximum 1023
 
 #define const_topic_bot_serial "/idp/bot/serial"
 #define const_topic_bot_cmd "/idp/bot/cmd"
@@ -53,6 +57,9 @@
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *L_MOTOR = AFMS.getMotor(port_motor_left);
 Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
+
+//VarSpeedServo servo_arm;
+//VarSpeedServo servo_tray;
 
 unsigned long prev_move_indicator_millis = 0;
 
@@ -136,23 +143,52 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 {
     Serial.print("Message arrived [");
     Serial.print(topic);
+
     Serial.print("] ");
-    
     for (int i = 0; i < length; i++)
     {
-      Serial.print((char)payload[i]);
+        Serial.print((char)payload[i]);
     }
     Serial.println();
 
-    if (topic == const_topic_bot_cmd) {
-      payload[length] = '\0';
-      int cmd_val = atoi((char *)payload);
-      cmd_move = cmd_val;
+    payload[length] = '\0';
+    int payload_val = atoi((char *)payload);
+
+    String str_topic = String((char*)topic);
+    int str_topic_len = str_topic.length() + 1; 
+    char buf_topic[str_topic_len];
+    str_topic.toCharArray(buf_topic, str_topic_len);
+
+    mqc.publish(const_topic_bot_serial, "Recieved message");
+    mqc.publish(const_topic_bot_serial, buf_topic);
+
+    for (int i = 0; i < length; i++)
+    {
+      Serial.print((char)payload[i]);
+      //mqc.publish(const_topic_bot_serial, String((char)payload[i]).c_str());
     }
-    else if (topic == const_topic_bot_stage) {
-      payload[length] = '\0';
-      int state_val = atoi((char *)payload);
-      task_state = state_val;
+
+    Serial.println();
+    //mqc.publish(const_topic_bot_serial, " ");
+
+    if (strcmp(buf_topic, const_topic_bot_cmd) == 0) {
+      cmd_move = payload_val;
+
+      Serial.print("Set cmd_move to ");
+      Serial.print(payload_val);
+      Serial.print(" ");
+      Serial.println(cmd_move);
+
+      mqc.publish(const_topic_bot_serial, "Set command move to:");
+      mqc.publish(const_topic_bot_serial, String(cmd_move).c_str());
+    }
+    else if (strcmp(buf_topic, const_topic_bot_stage) == 0) {
+      task_state = payload_val;
+      mqc.publish(const_topic_bot_serial, "Set task state to:");
+      mqc.publish(const_topic_bot_serial, String(task_state).c_str());
+    }
+    else {
+      mqc.publish(const_topic_bot_serial, "No match found for topic");
     }
     
 }
@@ -218,6 +254,17 @@ void setupDriveMotors()
   L_MOTOR->run(RELEASE);
   R_MOTOR->run(RELEASE);
 }
+
+/*
+void setupServos()
+{
+  servo_arm.attach(port_servo_arm);
+  servo_arm.attach(port_servo_tray);
+
+  servo_arm.write(20, 30, false);
+  servo_tray.write(20, 30, true);
+}
+*/
 
 void setupIndicators()
 {
@@ -469,7 +516,7 @@ void lineFollow2()
     cmd_speed = const_motor_full_speed;
     cmd_move = STOP;
     Serial.println("Complete.");
-    mqc.publish(const_topic_bot_serial, "Complete.");
+    mqc.publish(const_topic_bot_serial, "lf2 complete.");
     line_follow_complete = true;
   }
   else if (b1 && b2 && !b3)
@@ -629,9 +676,11 @@ void setup()
   //task_state = -1;
 
   beginSerial();
-  setupDriveMotors();
   setupWifi();
   setupMqtt();
+
+  setupDriveMotors();
+  //setupServos();  
   setupBtns();
   setupIndicators();
   setupUltrasound();
@@ -702,19 +751,34 @@ void loop()
         lineFollow2();
       }
       else {
-        // Reached cave entry line
-        cmd_move = STOP;
-        
-        task_state = 3;
-        mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+        // Reached cave entry line - move forward to clear
+        cmd_move = FWRD;
 
-        line_follow_complete = false;
+        if (temp_wait_complete) {
+          temp_timestore = millis();
+          temp_time_interval = 1500;
+          temp_wait_complete = false;
+        }
+        else {
+          if (millis() - temp_timestore > temp_time_interval) {
+            // Cleared cave
+            cmd_move = STOP;
+            line_follow_complete = false;
+        
+            task_state = 3;
+            mqc.publish(const_topic_bot_stt, String(task_state).c_str());
+
+          }
+        }
       }
       break;
 
     case 3:
       // Computer vision vector control (navigate to victims)
-      cmd_speed = const_motor_half_speed;
+      if (cmd_speed != const_motor_half_speed) {
+        cmd_speed = const_motor_half_speed;
+        mqc.publish(const_topic_bot_serial, "Set computer vision control speed");
+      }
       //collisionAvoidance();      
       break;
 
@@ -750,7 +814,7 @@ void loop()
       // To be implemented. Currently just waits some time.
       cmd_move = STOP;
 
-      if (victim_pickup_wait_complete) {
+      if (temp_wait_complete) {
         temp_timestore = millis();
         temp_time_interval = 5000;
         temp_wait_complete = false;
@@ -800,15 +864,15 @@ void loop()
       // To be implemented. Currently just waits some time.
       cmd_move = STOP;
 
-      if (victim_unload_wait_complete) {
+      if (temp_wait_complete) {
         temp_timestore = millis();
         temp_time_interval = 5000;
-        victim_unload_wait_complete = false;
+        temp_wait_complete = false;
       }
       else {
         if (millis() - temp_timestore > temp_time_interval) {
           // Victim unload wait complete
-          victim_unload_wait_complete = true;
+          temp_wait_complete = true;
 
           task_state = 2;
           mqc.publish(const_topic_bot_stt, String(task_state).c_str());

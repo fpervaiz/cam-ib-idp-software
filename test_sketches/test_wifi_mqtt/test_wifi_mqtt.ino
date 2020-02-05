@@ -2,6 +2,11 @@
 #include <PubSubClient.h>
 #include <WiFiNINA.h>
 
+#define const_topic_bot_serial "/idp/bot/serial"
+#define const_topic_bot_cmd "/idp/bot/cmd"
+#define const_topic_bot_stt "/idp/bot/stt"
+#define const_topic_bot_stage "/idp/bot/stage"
+
 char ssid[] = "IDP_L101";
 char pass[] = ">r063W83";
 int status = WL_IDLE_STATUS;
@@ -109,12 +114,31 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 {
     Serial.print("Message arrived [");
     Serial.print(topic);
+
     Serial.print("] ");
     for (int i = 0; i < length; i++)
     {
         Serial.print((char)payload[i]);
     }
     Serial.println();
+
+    String strTopic = String((char*)topic);
+    int strLen = strTopic.length() + 1; 
+    char buf[strLen];
+    strTopic.toCharArray(buf, strLen);
+
+    mqc.publish(const_topic_bot_serial, "Recieved message");
+    mqc.publish(const_topic_bot_serial, buf);
+
+    if (strcmp(buf, const_topic_bot_cmd) == 0) {
+        Serial.println("command topic");
+    }
+    else if (strcmp(buf, const_topic_bot_stt) == 0) {
+        Serial.println("state topic");
+    }
+    else {
+        Serial.println("unrecognised topic");
+    }
 }
 
 void connectMqtt()
@@ -130,6 +154,7 @@ void connectMqtt()
             mqc.publish("/idp/bot/stt", "Arduino connected.");
             // ... and resubscribe
             mqc.subscribe("/idp/bot/cmd");
+            mqc.subscribe("/idp/bot/stt");
         }
         else
         {
@@ -166,6 +191,7 @@ void setup()
 void loop()
 {
     // check the network connection once every 10 seconds:
+    /*
     delay(10000);
     printCurrentNet();
 
@@ -174,5 +200,7 @@ void loop()
         connectMqtt();
     }
     mqc.publish("/idp/bot/stt", "Hello!");
+    */
+
     mqc.loop();
 }

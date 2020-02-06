@@ -31,14 +31,15 @@
 
 #define const_move_indicator_period 250
 
-#define const_sens_optor_l_threshold 128 // 500
-#define const_sens_optor_c_threshold 128 // 250
-#define const_sens_optor_r_threshold 64 // 350
+#define const_sens_optor_l_threshold 300 // 500
+#define const_sens_optor_c_threshold 400 // 250
+#define const_sens_optor_r_threshold 350 // 350
 #define const_sens_optor_working_minimum 5
 #define const_sens_optor_working_maximum 1023
 
 #define const_topic_bot_cmd_stage "/idp/bot/cmd_stage"
 #define const_topic_bot_stt_stage "/idp/bot/stt_stage"
+#define const_topic_bot_stt_drop_stage "/idp/bot/stt_drop_stage"
 #define const_topic_bot_debug "/idp/bot/debug"
 #define const_topic_bot_cmd_move "/idp/bot/cmd_move"
 #define const_topic_bot_cmd_speed "/idp/bot/cmd_speed"
@@ -215,30 +216,21 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 
 void connectMqtt()
 {
-    int temp = cmd_move;
     while (!mqc.connected())
     {
-        cmd_move = STOP;
-
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
         if (mqc.connect("arduinoClient"))
         {
             Serial.println("connected");
             // Once connected, publish an announcement...
-            mqc.publish(const_topic_bot_debug, " ");
-            mqc.publish(const_topic_bot_debug, "-----------------------------------");
-            mqc.publish(const_topic_bot_debug, "L101 Main Bot Program");
-            mqc.publish(const_topic_bot_debug, "Arduino connected.");
-
-            //mqc.publish(const_topic_bot_stt_stage, task_state);
+            mqc.publish(const_topic_bot_debug, "MQTT connected.");
 
             // ... and subscribe
             mqc.subscribe(const_topic_bot_cmd_move);
             mqc.subscribe(const_topic_bot_cmd_speed);
             mqc.subscribe(const_topic_bot_cmd_stage);
 
-            cmd_move = temp;
         }
         else
         {
@@ -282,7 +274,7 @@ void setupServos()
   servo_arm.attach(port_servo_tray);
 
   servo_arm.write(20);
-  servo_tray.write(20);
+  servo_tray.write(135);
 }
 
 void setupIndicators()
@@ -695,6 +687,11 @@ void setup()
   setupWifi();
   setupMqtt();
 
+  mqc.publish(const_topic_bot_debug, " ");
+  mqc.publish(const_topic_bot_debug, "-----------------------------------");
+  mqc.publish(const_topic_bot_debug, "L101 Main Bot Program");
+  mqc.publish(const_topic_bot_debug, "Arduino connected.");
+
   setupDriveMotors();
   setupServos();  
   setupBtns();
@@ -724,6 +721,22 @@ void setup()
 
 void loop()
 {
+
+  if (!mqc.connected()) {
+    int temp = cmd_move;
+    cmd_move = STOP;
+    driveMotors();
+
+    connectMqtt();
+
+    // Re-state to driver
+    mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
+
+    cmd_move = temp;
+    driveMotors();
+
+  }
+
   unsigned long current_millis = millis();
 
   // Solid amber during health detection otherwise blink amber 2Hz while moving
@@ -750,7 +763,7 @@ void loop()
         // Reached border: drive forward to clear border
         if (cmd_move == STOP) {
           temp_timestore = millis();
-          temp_time_interval = 2000;
+          temp_time_interval = 1500;
           cmd_move = FWRD;
         }
         else {
@@ -785,7 +798,7 @@ void loop()
           if (millis() - temp_timestore > temp_time_interval) {
             // Cleared cave
             cmd_move = STOP;
-            line_follow_complete = false;
+            temp_wait_complete = true;
         
             task_state = 3;
             mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
@@ -797,11 +810,13 @@ void loop()
 
     case 3:
       // Computer vision vector control (navigate to victims)
+      /*
       if (cmd_speed != const_motor_half_speed) {
         cmd_speed = const_motor_half_speed;
         mqc.publish(const_topic_bot_debug, "Set computer vision control speed");
       }
-      //collisionAvoidance();      
+      //collisionAvoidance();
+      */      
       break;
 
     case 4:
@@ -827,7 +842,7 @@ void loop()
 
     case 5:
       // Computer vision vector control (positioning to load)
-      cmd_speed = const_motor_half_speed;
+      //cmd_speed = const_motor_half_speed;
       //collisionAvoidance(); 
       break;
 
@@ -855,7 +870,7 @@ void loop()
 
     case 7:
       // Computer vision vector control (navigate to cave exit)
-      cmd_speed = const_motor_half_speed;
+      //cmd_speed = const_motor_half_speed;
       //collisionAvoidance(); 
       break;
 
@@ -877,7 +892,7 @@ void loop()
 
     case 9:
       // Computer vision vector control (reposition for unloading)
-      cmd_speed = const_motor_half_speed;
+      //cmd_speed = const_motor_half_speed;
       //collisionAvoidance(); 
       break;
 
@@ -918,5 +933,6 @@ void loop()
   */
   
   driveMotors();
+
   mqc.loop();
 }

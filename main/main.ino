@@ -48,6 +48,7 @@
 #define const_topic_bot_debug "/idp/bot/debug"
 #define const_topic_bot_cmd_move "/idp/bot/cmd_move"
 #define const_topic_bot_cmd_speed "/idp/bot/cmd_speed"
+#define const_topic_bot_cmd_mech "/idp/bot/cmd_mech"
 
 // Movement command definitions
 
@@ -81,7 +82,9 @@ int cmd_speed = 255;
 int cmd_speed_prev = cmd_speed;
 
 bool line_follow_complete = false;
+bool mech_open_cmd_recvd = false;
 bool mech_ready_to_pickup = false;
+bool mech_open_triggered = false;
 
 int task_state = 0;
 
@@ -208,6 +211,12 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
       mqc.publish(const_topic_bot_debug, "Set task state to:");
       mqc.publish(const_topic_bot_debug, String(task_state).c_str());
     }
+    else if (strcmp(buf_topic, const_topic_bot_cmd_mech) == 0) {
+
+      Serial.println("Opening mechanism for loading");
+      mech_open_cmd_recvd = true;
+
+    }
     else {
       mqc.publish(const_topic_bot_debug, "No match found for topic");
     }
@@ -230,6 +239,7 @@ void connectMqtt()
             mqc.subscribe(const_topic_bot_cmd_move);
             mqc.subscribe(const_topic_bot_cmd_speed);
             mqc.subscribe(const_topic_bot_cmd_stage);
+            mqc.subscribe(const_topic_bot_cmd_mech);
 
         }
         else
@@ -278,8 +288,8 @@ void setupServos()
 
   delay(500);
 
-  servo_arm.detach(port_servo_arm);
-  servo_tray.detach(port_servo_tray);
+  servo_arm.detach();
+  servo_tray.detach();
 }
 
 void setupIndicators()
@@ -746,7 +756,7 @@ void loop()
   unsigned long current_millis = millis();
 
   // Solid amber during health detection otherwise blink amber 2Hz while moving
-  if (task_state == 4 && !digitalRead(pin_indicator_move_led)) {
+  if (task_state == 5 && !digitalRead(pin_indicator_move_led)) {
     digitalWrite(pin_indicator_move_led, 1);
   }
   else {
@@ -824,8 +834,43 @@ void loop()
       //collisionAvoidance();
       */      
       break;
-
+    
     case 4:
+      // Computer vision vector control (positioning to load)
+      //cmd_speed = const_motor_half_speed;
+
+      if (mech_open_cmd_recvd && !mech_ready_to_pickup && !mech_open_triggered) {
+        servo_arm.write(const_servo_pos_arm_out);
+        servo_tray.write(const_servo_pos_tray_down);
+        
+        servo_arm.attach(port_servo_arm);
+        servo_tray.attach(port_servo_tray);
+
+        mech_open_triggered = true;
+      }
+      
+      if (temp_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 500;
+        temp_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          // Movement complete - detach setupServos
+
+          servo_arm.detach();
+          servo_tray.detach();
+
+          mech_ready_to_pickup = true;
+          temp_wait_complete = true;
+
+        }
+      }
+
+      //collisionAvoidance();
+      break;
+
+    case 5:
       // Health detection wait
       cmd_move = STOP;
 
@@ -839,40 +884,44 @@ void loop()
           // Health detection wait complete
           temp_wait_complete = true;
 
-          task_state = 5;
+          task_state = 6;
           mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
       
       break;
 
-    case 5:
-      // Computer vision vector control (positioning to load)
-      //cmd_speed = const_motor_half_speed;
-
-      if (!mech_ready_to_pickup) {
-        servo_arm.attach(port_servo_arm);
-        servo_tray.attach(port_servo_tray);
-
-        servo_arm.write(const_servo_pos_arm_out);
-        servo_tray.write(const_servo_pos_tray_down);
-
-        delay(500);
-
-        servo_arm.detach();
-        servo_tray.detach();
-
-        mech_ready_to_pickup = true;
-      }
-      //collisionAvoidance();
-      break;
-
     case 6:
       // Load victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
+      cmd_speed = 48;
+      cmd_move = RVRS;
+      driveMotors();
+      delay(500);
       cmd_move = STOP;
+      driveMotors();
 
+      servo_arm.write(const_servo_pos_arm_out);
+      servo_arm.attach(port_servo_arm);
 
+      delay(50);
+
+      for (int pos = const_servo_pos_arm_out; pos <= const_servo_pos_arm_in; pos += 10) {
+        servo_arm.write(pos);
+        delay(100);
+      }
+
+      servo_arm.detach();
+
+      servo_tray.write(const_servo_pos_tray_up);      
+      servo_tray.attach(port_servo_tray);
+
+      delay(500);
+
+      servo_tray.detach();
+
+      task_state = 7;
+      mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
       /*
       if (temp_wait_complete) {
@@ -922,10 +971,41 @@ void loop()
       break;
 
     case 10:
-      // Unload victim
+      // Unload victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
+      cmd_speed = 192;
+      cmd_move = RVRS;
+      driveMotors();
+      delay(1000);
       cmd_move = STOP;
+      driveMotors();
 
+      servo_arm.write(const_servo_pos_arm_out);
+      servo_tray.write(const_servo_pos_tray_down);
+
+      servo_arm.attach(port_servo_arm);
+      servo_tray.attach(port_servo_tray);
+
+      delay(500);
+
+      cmd_move = FWRD;
+      driveMotors();
+      delay(1000);
+      cmd_move = STOP;
+      driveMotors();
+
+      servo_arm.write(const_servo_pos_arm_in);
+      servo_tray.write(const_servo_pos_tray_up);
+
+      delay(500);
+
+      servo_arm.detach();
+      servo_tray.detach();
+
+      task_state = 11;
+      mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+
+      /*
       if (temp_wait_complete) {
         temp_timestore = millis();
         temp_time_interval = 5000;
@@ -940,7 +1020,12 @@ void loop()
           mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
+      */
 
+      break;
+
+    case 11:
+      // Driver decision
       break;
   }
 

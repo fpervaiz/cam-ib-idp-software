@@ -55,6 +55,7 @@ topic_bot_stt_drop_stage = "/idp/bot/stt_drop_stage"
 topic_bot_debug = "/idp/bot/debug"
 topic_bot_cmd_move = "/idp/bot/cmd_move"
 topic_bot_cmd_speed = "/idp/bot/cmd_speed"
+topic_bot_cmd_mech = "/idp/bot/cmd_mech"
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -230,7 +231,8 @@ while True:
     
     out = frame.copy()
 
-    cv2.drawContours(out,[victim_detection_region],0,(255,0,0),1)
+    cv2.drawContours(out, [victim_detection_region], 0, green, 1)
+    cv2.drawContours(out, [triage_region], 0, red, 1)
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     victim = cv2.inRange(hsv, victim_lower, victim_upper)
@@ -324,6 +326,9 @@ while True:
     elif stage == 0:
         status = "Waiting for start button push..."
         has_cmd = "Arduino"
+
+        load_mech_opened = False
+
     elif stage == 1:
         status = "Bot line following - exiting start box"
         has_cmd = "Arduino"
@@ -351,16 +356,20 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
-                if distance > 30:
+                if distance > 150:
                     cmd_move = straight_forward
+                    '''
                     if distance > 50:
                         cmd_speed = nav_speed_high
                     else:
                         cmd_speed = nav_speed_low
+                    '''
+                    cmd_speed = nav_speed_high
                 else:
                     cmd_move = stop
 
-                    # Move to detection stage
+                    # Move to positioning stage
+                    move_away_allowed = True
                     stage = 4
                     mqc.publish(topic_bot_cmd_stage, stage)
             
@@ -370,13 +379,6 @@ while True:
             send_move_command(cmd_move, prev_cmd_move)
 
     elif stage == 4:
-        status = "Detecting victim health"
-        has_cmd = "Arduino"
-
-        # For next stage
-        move_away_allowed = True
-    
-    elif stage == 5:
         status = "Positioning to load victim"
         has_cmd = "Python"
 
@@ -389,7 +391,7 @@ while True:
         distance = np.linalg.norm(target_vector)
         angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-        if distance < 180 and move_away_allowed:
+        if distance < 150 and move_away_allowed:
             cmd_speed = nav_speed_high
             cmd_move = straight_reverse
         else:
@@ -406,10 +408,14 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
             
             else:
+                if not load_mech_opened:
+                    mqc.publish(topic_bot_cmd_mech, "Open sesame")
+                    load_mech_opened = True
+                
                 # Reverse towards victim for pickup
                 if distance > 100:
                     cmd_move = straight_reverse
-                    if distance > 150:
+                    if distance > 110:
                         cmd_speed = nav_speed_high
                     else:
                         cmd_speed = nav_speed_low
@@ -418,7 +424,7 @@ while True:
                     cmd_move = stop
 
                     # Move to load victim stage
-                    stage = 6
+                    stage = 5
                     mqc.publish(topic_bot_cmd_stage, stage)
 
         cv2.putText(out, "Angle {} Distance {}".format(angle_error, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
@@ -426,6 +432,10 @@ while True:
 
         send_speed_command(cmd_speed, prev_cmd_speed)
         send_move_command(cmd_move, prev_cmd_move)
+    
+    elif stage == 5:
+        status = "Detecting victim health"
+        has_cmd = "Arduino"
     
     elif stage == 6:
         status = "Loading victim"

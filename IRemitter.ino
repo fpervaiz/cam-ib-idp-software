@@ -38,25 +38,26 @@ void setUpIR(){
   Serial.println(F("IR Enabled at 38kHz"));
 }
 
-void setEmitterMode(){
+void setEmitterMode(bool change){
 
-  IRmode = (IRmode + 1)%3;
+  if(change){IRmode = (IRmode + 1)%3;}
+  Serial.println(IRmode);
   
   switch (IRmode){
     
     case 0:
-      TIMER_DISABLE_PWM;
+      digitalWrite(TIMER_PWM_PIN, LOW);
       break;
       
     case 1:
-      TIMER_ENABLE_PWM;
+      digitalWrite(TIMER_PWM_PIN, HIGH);
       break;
       
      case 2:
-      TIMER_ENABLE_PWM;
-      delayMicroseconds(250);
+      digitalWrite(TIMER_PWM_PIN, HIGH);
+      delayMicroseconds(25);
       TIMER_DISABLE_PWM;
-      delayMicroseconds(250);
+      digitalWrite(TIMER_PWM_PIN, LOW);
       break;
       
     }
@@ -71,12 +72,12 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  setEmitterMode();
+  setEmitterMode(false);
 
   btnPress = digitalRead(btn_pin);
 
   if (btnPress == HIGH && previous == LOW && millis() - time > debounce){
-    setEmitterMode();
+    setEmitterMode(true);
     time = millis();
   }
 

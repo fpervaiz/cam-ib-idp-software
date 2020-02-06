@@ -9,6 +9,9 @@
 #define pin_sens_ultrasound_trigger 10
 #define pin_sens_ultrasound_echo 13
 
+#define microPinLft 6
+#define microPinRgt 5
+
 #define pin_sens_optor_l A0
 #define pin_sens_optor_c A1
 #define pin_sens_optor_r A2
@@ -62,6 +65,11 @@ void beginSerial()
   Serial.begin(9600);
   Serial.println(F("Main Program"));
   Serial.println(F("-----------------------------------------"));
+}
+
+void setupHitWall(){
+  pinMode(microPinLft, INPUT);
+  pinMode(microPinRgt, INPUT);
 }
 
 void setupUltrasound()
@@ -409,8 +417,14 @@ void radialSearch(){
   driveMotor();
 }
 
-void roamBoard(){
-  
+void hitAWall(int prev_cmd, int pin_side){
+  driveMotors(2);
+  delay(1000);
+
+  driveMotors(pin_side - 2);
+  delay(1000);
+
+  return prev_cmd;
 }
 
 
@@ -447,4 +461,12 @@ void loop()
   lineFollow();
   driveMotors();
   delay(10);
+
+  if(digitalRead(microPinLft)){
+      cmd_move = hitAWall(cmd_move, microPinLft)
+    }
+  if(digitalRead(microPinRgt)){
+      cmd_move = hitAWall(cmd_move, microPinRgt)
+    }
+   
 }

@@ -20,7 +20,7 @@ void setup() {
   R_MOTOR->run(FORWARD);
 }
 
-void hitAWall(){
+void hitAWall(int prev_cmd){
   L_MOTOR->run(BACKWARD); R_MOTOR->run(BACKWARD);
   for(int i = 150; i>0; i--){
     L_MOTOR->setSpeed(i); R_MOTOR->setSpeed(i);

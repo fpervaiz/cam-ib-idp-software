@@ -37,6 +37,11 @@
 #define const_sens_optor_working_minimum 5
 #define const_sens_optor_working_maximum 1023
 
+#define const_servo_pos_tray_up 135
+#define const_servo_pos_tray_down 145
+#define const_servo_pos_arm_in 110
+#define const_servo_pos_arm_out 25
+
 #define const_topic_bot_cmd_stage "/idp/bot/cmd_stage"
 #define const_topic_bot_stt_stage "/idp/bot/stt_stage"
 #define const_topic_bot_stt_drop_stage "/idp/bot/stt_drop_stage"
@@ -76,12 +81,7 @@ int cmd_speed = 255;
 int cmd_speed_prev = cmd_speed;
 
 bool line_follow_complete = false;
-
-/*
-bool health_detect_wait_complete = true;
-bool victim_pickup_wait_complete = true;
-bool victim_unload_wait_complete = true;
-*/
+bool mech_ready_to_pickup = false;
 
 int task_state = 0;
 
@@ -270,11 +270,16 @@ void setupDriveMotors()
 
 void setupServos()
 {
-  servo_arm.attach(port_servo_arm);
-  servo_arm.attach(port_servo_tray);
+  servo_arm.write(const_servo_pos_arm_in);
+  servo_tray.write(const_servo_pos_tray_up);
 
-  servo_arm.write(20);
-  servo_tray.write(135);
+  servo_arm.attach(port_servo_arm);
+  servo_tray.attach(port_servo_tray);
+
+  delay(500);
+
+  servo_arm.detach(port_servo_arm);
+  servo_tray.detach(port_servo_tray);
 }
 
 void setupIndicators()
@@ -844,14 +849,32 @@ void loop()
     case 5:
       // Computer vision vector control (positioning to load)
       //cmd_speed = const_motor_half_speed;
-      //collisionAvoidance(); 
+
+      if (!mech_ready_to_pickup) {
+        servo_arm.attach(port_servo_arm);
+        servo_tray.attach(port_servo_tray);
+
+        servo_arm.write(const_servo_pos_arm_out);
+        servo_tray.write(const_servo_pos_tray_down);
+
+        delay(500);
+
+        servo_arm.detach();
+        servo_tray.detach();
+
+        mech_ready_to_pickup = true;
+      }
+      //collisionAvoidance();
       break;
 
     case 6:
-      // Load victim
+      // Load victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
       cmd_move = STOP;
 
+
+
+      /*
       if (temp_wait_complete) {
         temp_timestore = millis();
         temp_time_interval = 5000;
@@ -866,6 +889,7 @@ void loop()
           mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
         }
       }
+      */
 
       break;
 

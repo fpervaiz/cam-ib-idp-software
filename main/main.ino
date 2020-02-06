@@ -5,7 +5,7 @@
 #include <Adafruit_MotorShield.h>
 #include <PubSubClient.h>
 #include <WiFiNINA.h>
-//#include <VarSpeedServo.h>
+#include <Servo.h>
 
 // DEFINITIONS
 
@@ -59,8 +59,8 @@ Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *L_MOTOR = AFMS.getMotor(port_motor_left);
 Adafruit_DCMotor *R_MOTOR = AFMS.getMotor(port_motor_right);
 
-//VarSpeedServo servo_arm;
-//VarSpeedServo servo_tray;
+Servo servo_arm;
+Servo servo_tray;
 
 unsigned long prev_move_indicator_millis = 0;
 
@@ -276,16 +276,14 @@ void setupDriveMotors()
   R_MOTOR->run(RELEASE);
 }
 
-/*
 void setupServos()
 {
   servo_arm.attach(port_servo_arm);
   servo_arm.attach(port_servo_tray);
 
-  servo_arm.write(20, 30, false);
-  servo_tray.write(20, 30, true);
+  servo_arm.write(20);
+  servo_tray.write(20);
 }
-*/
 
 void setupIndicators()
 {
@@ -698,7 +696,7 @@ void setup()
   setupMqtt();
 
   setupDriveMotors();
-  //setupServos();  
+  setupServos();  
   setupBtns();
   setupIndicators();
   setupUltrasound();

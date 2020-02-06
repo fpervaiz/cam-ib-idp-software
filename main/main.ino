@@ -626,9 +626,9 @@ void lineFollow3()
   }
   else if (!b1 && b2 && !b3)
   {
-    // W B W - junction - decision - to be implemented
+    // W B W - junction - decision - rightward bias to exit cave right
     cmd_speed = const_motor_half_speed;
-    cmd_move = FWRD;
+    cmd_move = PVTR;
   }
   else if (!b1 && !b2 && b3)
   {
@@ -683,6 +683,8 @@ void setup()
   // Reset state
   //task_state = -1;
 
+  setupDriveMotors();
+
   beginSerial();
   setupWifi();
   setupMqtt();
@@ -692,7 +694,6 @@ void setup()
   mqc.publish(const_topic_bot_debug, "L101 Main Bot Program");
   mqc.publish(const_topic_bot_debug, "Arduino connected.");
 
-  setupDriveMotors();
   setupServos();  
   setupBtns();
   setupIndicators();
@@ -729,7 +730,7 @@ void loop()
 
     connectMqtt();
 
-    // Re-state to driver
+    // Force driver to update
     mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
 
     cmd_move = temp;

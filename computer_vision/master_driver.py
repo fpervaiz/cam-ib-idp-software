@@ -6,15 +6,34 @@ import time
 
 from cv2 import aruco
 
+red = (0, 0, 255)
+yellow = (0, 255, 255)
+green = (0, 255, 0)
+blue = (255, 0, 0)
+dark_green = (0, 128, 0)
+
+stop = 0
+straight_forward = 1
+straight_reverse = 2
+pivot_left = 3
+pivot_right = 4
+rotate_left = 5
+rotate_right = 6
+
+nav_speed_low = 48
+nav_speed_high = 192
+
 bot_width = 0.40
 bot_front = 0.75
 bot_rear = 0.60
+
+bot_detected = False
 
 victim_lower = np.array([35, 70, 150], np.uint8)
 victim_upper = np.array([60, 255, 255], np.uint8)
 
 victim_detection_region = np.array([[230, 25],[750, 25],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
-triage_region = np.array([[810, 570], [1000, 573], [1000, 718], [808, 718]], np.int32).reshape((-1,1,2))
+triage_region = np.array([[810, 570], [1000, 570], [1000, 720], [810, 720]], np.int32).reshape((-1,1,2))
 
 victim_contour_min_area = 25
 
@@ -25,8 +44,7 @@ stage = -1
 prev_cmd_move = -1
 prev_cmd_speed = 255
 
-angle_threshold = 10
-angle_threshold_pickup = 3
+angle_threshold = 4
 
 point_cave_exit_positioning = np.array([480, 335])
 point_cave_exit_line = np.array([545, 335])
@@ -100,9 +118,11 @@ def on_message(client, userdata, message):
     print("MQTT received: message topic=", message.topic, "payload=", payload, "\n")
 
     if message.topic == topic_bot_stt_stage:
-        if int(payload) == 0:#and stage == -1:
+        if int(payload) == 0:
             # Arduino start ping
             stage = 0
+
+            # Reset to allow future transmission
             prev_cmd_move = 0
             prev_cmd_speed = -1
 
@@ -142,23 +162,40 @@ def on_message(client, userdata, message):
             # Undefined
             pass
             
-        #print("Entered stage {}".format(stage))
     elif message.topic == topic_bot_stt_drop_stage:
         stage = int(payload)
+        print("Set stage to {} on receiving dropped connection restate".format(payload))
 
-def send_move_command(curr, prev):
+def calculate_turn_command(target_vector, bot_vector, error, threshold):
+    if unit_cross_prod(target_vector, bot_vector) > 0:
+        move = rotate_right
+    else:
+        move = rotate_left
+
+    if error < (threshold * 4):
+        speed = nav_speed_low
+    else:
+        speed = nav_speed_high
+
+    return move, speed
+
+def send_move_command(curr, force=False):
     global prev_cmd_move
-    if not curr == prev:
+    if (force) or (not curr == prev_cmd_move):
         mqc.publish(topic_bot_cmd_move, curr)
         prev_cmd_move = curr
         print("Command move: {}".format(curr))
 
-def send_speed_command(curr, prev):
+def send_speed_command(curr, force=False):
     global prev_cmd_speed
     if not curr == prev_cmd_speed:
         mqc.publish(topic_bot_cmd_speed, curr)
         prev_cmd_speed = curr
         print("Command speed: {}".format(curr))
+
+def window_write_nav_info(angle, distance, move, speed):
+    cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
+    cv2.putText(out, "Move {} Speed {}".format(move, speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
 
 mqc = mqtt.Client("MASTER")
 mqc.connect("192.168.137.1")
@@ -167,7 +204,8 @@ mqc.on_disconnect = on_disconnect
 mqc.loop_start()
 
 mqc.subscribe(topic_bot_stt_stage)
-#mqc.subscribe(topic_bot_serial)
+mqc.subscribe(topic_bot_stt_drop_stage)
+
 '''
 cv2.namedWindow('Bars')
 cv2.createTrackbar('Width', 'Bars', int(bot_width*100), 200, bot_width_trackbar)
@@ -180,7 +218,7 @@ cv2.moveWindow('Vision', 20, 20)
 cv2.setMouseCallback('Vision', print_mouse_coords)
 
 cap = cv2.VideoCapture(0)
-#cap = cv2.VideoCapture('http://localhost:8080/')
+
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -206,10 +244,10 @@ while True:
     victim_index = 0
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
-        if area > 20:
+        if area >= victim_contour_min_area:
             x, y, w, h = cv2.boundingRect(contour)
             if cv2.pointPolygonTest(victim_detection_region, (x, y), False) == 1.0:        
-                cv2.rectangle(out, (x, y), (x+w, y+h), (255, 0, 0), 3)
+                cv2.rectangle(out, (x, y), (x+w, y+h), blue, 3)
                 M = cv2.moments(contour)
                 Vx = int(M['m10']/M['m00'])
                 Vy = int(M['m01']/M['m00'])
@@ -225,6 +263,7 @@ while True:
     frame_markers = aruco.drawDetectedMarkers(out, corners, ids)
     
     if corners:
+        bot_detected = True
 
         c1 = corners[0][0, 0]
         c2 = corners[0][0, 1]
@@ -253,42 +292,30 @@ while True:
         cp_r_l = 50
         cp_r_e = m3 - cp_r_l * central_parallel
 
-        cv2.circle(out, tuple(m1), 5, (0, 255, 0), 2)
-        cv2.circle(out, tuple(m2), 5, (0, 255, 0), 2)
-        cv2.circle(out, tuple(m3), 5, (0, 255, 0), 2)
-        cv2.circle(out, tuple(m4), 5, (0, 255, 0), 2)
+        cv2.circle(out, tuple(m1), 5, green, 2)
+        cv2.circle(out, tuple(m2), 5, green, 2)
+        cv2.circle(out, tuple(m3), 5, green, 2)
+        cv2.circle(out, tuple(m4), 5, green, 2)
 
-        cv2.line(out, tuple(m3), tuple(m1), (0, 128, 0), 2)
+        cv2.line(out, tuple(m3), tuple(m1), dark_green, 2)
 
-        cv2.arrowedLine(out, tuple(m1), tuple(cp_f_e), (0, 128, 0), 2)
-        cv2.line(out, tuple(m3), tuple(cp_r_e), (0, 128, 0), 2)
-        cv2.circle(out, tuple(cp_r_e), 5, (0, 128, 0), 2)
+        cv2.arrowedLine(out, tuple(m1), tuple(cp_f_e), dark_green, 2)
+        cv2.line(out, tuple(m3), tuple(cp_r_e), dark_green, 2)
+        cv2.circle(out, tuple(cp_r_e), 5, dark_green, 2)
 
-        cv2.circle(out, tuple(b1), 5, (255, 0, 0), 2)
-        cv2.circle(out, tuple(b2), 5, (255, 0, 0), 2)
-        cv2.circle(out, tuple(b3), 5, (255, 0, 0), 2)
-        cv2.circle(out, tuple(b4), 5, (255, 0, 0), 2)
+        cv2.circle(out, tuple(b1), 5, blue, 2)
+        cv2.circle(out, tuple(b2), 5, blue, 2)
+        cv2.circle(out, tuple(b3), 5, blue, 2)
+        cv2.circle(out, tuple(b4), 5, blue, 2)
 
-        cv2.line(out, tuple(b1), tuple(b2), (255, 0, 0), 2)
-        cv2.line(out, tuple(b2), tuple(b3), (255, 0, 0), 2)
-        cv2.line(out, tuple(b3), tuple(b4), (255, 0, 0), 2)
-        cv2.line(out, tuple(b4), tuple(b1), (255, 0, 0), 2)
+        cv2.line(out, tuple(b1), tuple(b2), blue, 2)
+        cv2.line(out, tuple(b2), tuple(b3), blue, 2)
+        cv2.line(out, tuple(b3), tuple(b4), blue, 2)
+        cv2.line(out, tuple(b4), tuple(b1), blue, 2)
 
-    '''
-    if send_vectors:
-        cv2.line(out, victims[0], tuple(m1), (0, 255, 255), 2)
-        target_vector = np.array(victims[0]) - np.array(tuple(m1))
-        
-        angle_error = angle_between(target_vector, central_parallel)
-
-        #print(angle_error * 180/np.pi)
-
-        
-        if angle_error > angle_threshold:
-            if 
-
-    '''
-
+    else:
+        bot_detected = False
+    
     ### DRIVING ###
 
     if stage == -1:
@@ -309,41 +336,35 @@ while True:
         has_cmd = "Python"
         
         if victims:
-            cv2.line(out, victims[0], tuple(m1), (0, 255, 255), 2)
-            target_vector = np.array(tuple(m1)) - np.array(victims[0])
+
+            orig = tuple(m1)
+            dest = victims[0]
+
+            cv2.line(out, dest, orig, yellow, 2)
+
+            target_vector = np.array(dest) - np.array(orig)
 
             distance = np.linalg.norm(target_vector)
-            angle_error = np.degrees(
-                angle_between(-target_vector, central_parallel))
-            #print("Angle error: {}".format(angle_error))
+            angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-            if angle_error > angle_threshold_pickup:
-                if unit_cross_prod(-target_vector, central_parallel) > 0:
-                    cmd_move = 6  # Clockwise - rotate right
-                else:
-                    cmd_move = 5  # Anticlockwise - rotate left
-
-                if angle_error < (angle_threshold_pickup*6):
-                    cmd_speed = 32
-                else:
-                    cmd_speed = 128
+            if angle_error > angle_threshold:
+                cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
                 if distance > 30:
-                    cmd_move = 1  # Forward
+                    cmd_move = straight_forward
                     if distance > 50:
-                        cmd_speed = 128
+                        cmd_speed = nav_speed_high
                     else:
-                        cmd_speed = 32
+                        cmd_speed = nav_speed_low
                 else:
-                    cmd_move = 0  # Stop
+                    cmd_move = stop
 
                     # Move to detection stage
                     stage = 4
                     mqc.publish(topic_bot_cmd_stage, stage)
-
-            cv2.putText(out, "Angle {} Distance {}".format(angle_error, distance), (50, 150), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
-            cv2.putText(out, "Move {} Speed {}".format(cmd_move, cmd_speed), (50, 200), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+            
+            window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)            
             
             send_speed_command(cmd_speed, prev_cmd_speed)
             send_move_command(cmd_move, prev_cmd_move)
@@ -359,19 +380,21 @@ while True:
         status = "Positioning to load victim"
         has_cmd = "Python"
 
-        cv2.line(out, victims[0], tuple(m1), (0, 255, 255), 2)
+        orig = tuple(m1)
+        dest = victims[0]
 
-        target_vector = np.array(tuple(m1)) - np.array(victims[0])
+        cv2.line(out, dest, orig, yellow, 2)
+
+        target_vector = np.array(orig) - np.array(dest)
         distance = np.linalg.norm(target_vector)
-        angle_error = np.degrees(
-                angle_between(target_vector, central_parallel))
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
         if distance < 180 and move_away_allowed:
-            cmd_speed = 128
-            cmd_move = 2 # Reverse away for turn
+            cmd_speed = nav_speed_high
+            cmd_move = straight_reverse
         else:
             move_away_allowed = False
-            if angle_error > angle_threshold_pickup:
+            if angle_error > angle_threshold:
                 # Turn around
                 '''
                 if unit_cross_prod(target_vector, central_parallel) > 0:
@@ -379,30 +402,27 @@ while True:
                 else:
                     cmd_move = 5  # Anticlockwise - rotate left
                 '''
-                cmd_move = 6
-                if angle_error < (angle_threshold_pickup*6):
-                    cmd_speed = 32
-                else:
-                    cmd_speed = 128
+                # cmd_move = 6
+                cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
             
             else:
                 # Reverse towards victim for pickup
                 if distance > 100:
-                    cmd_move = 2
+                    cmd_move = straight_reverse
                     if distance > 150:
-                        cmd_speed = 128
+                        cmd_speed = nav_speed_high
                     else:
-                        cmd_speed = 32
+                        cmd_speed = nav_speed_low
                 else:
                     # Ready to pick up
-                    cmd_move = 0
+                    cmd_move = stop
 
                     # Move to load victim stage
                     stage = 6
                     mqc.publish(topic_bot_cmd_stage, stage)
 
-        cv2.putText(out, "Angle {} Distance {}".format(angle_error, distance), (50, 150), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
-        cv2.putText(out, "Move {} Speed {}".format(cmd_move, cmd_speed), (50, 200), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+        cv2.putText(out, "Angle {} Distance {}".format(angle_error, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
+        cv2.putText(out, "Move {} Speed {}".format(cmd_move, cmd_speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
 
         send_speed_command(cmd_speed, prev_cmd_speed)
         send_move_command(cmd_move, prev_cmd_move)
@@ -415,52 +435,43 @@ while True:
         status = "Navigating to cave exit"
         has_cmd = "Python"
 
-        cv2.line(out, tuple(m1), tuple(point_cave_exit_line),(0, 255, 255), 2)
-        target_vector = np.array(tuple(m1)) - point_cave_exit_line
+        orig = tuple(m1)
+        dest = tuple(point_cave_exit_line)
 
+        cv2.line(out, orig, dest, yellow, 2)
+
+        target_vector = np.array(orig) - point_cave_exit_line
+        distance = np.linalg.norm(target_vector)
         angle_error = np.degrees(angle_between(-target_vector, central_parallel))
-        if angle_error > angle_threshold_pickup:
-                if unit_cross_prod(-target_vector, central_parallel) > 0:
-                    cmd_move = 6  # Clockwise - rotate right
-                else:
-                    cmd_move = 5  # Anticlockwise - rotate left
 
-                if angle_error < (angle_threshold_pickup*6):
-                    cmd_speed = 32
-                else:
-                    cmd_speed = 128
+        if angle_error > angle_threshold:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
+        
         else:
-                distance = np.linalg.norm(target_vector)
-                if distance > 5:
-                    cmd_move = 1  # Forward
-                    if distance > 40:
-                        cmd_speed = 128
-                    else:
-                        cmd_speed = 32
+                
+            if distance > 5:
+                cmd_move = straight_forward
+                if distance > 40:
+                    cmd_speed = nav_speed_high
                 else:
-                    cmd_move = 0  # Stop
+                    cmd_speed = nav_speed_low
+            else:
+                cmd_move = stop
 
-                    # Turn parallel to exit line
-                    target_vector = np.array([1, 0])
-                    angle_error = np.degrees(angle_between(target_vector, central_parallel))
-                    if angle_error > angle_threshold_pickup:
-                        if unit_cross_prod(target_vector, central_parallel) > 0:
-                            cmd_move = 4  # Clockwise - pivot right
-                        else:
-                            cmd_move = 3  # Anticlockwise - pivot left
+                # Turn parallel to exit line
+                target_vector = np.array([1, 0])
+                angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-                        if angle_error < (angle_threshold_pickup*8):
-                            cmd_speed = 32
-                        else:
-                            cmd_speed = 128
-                        
-                    else:
-                        # Lined up with exit line
-                        cmd_move = 0 # Stop
+                if angle_error > angle_threshold:
+                    cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
+                    
+                else:
+                    # Lined up with exit line
+                    cmd_move = stop
 
-                        # Move to cave exit line follow stage
-                        stage = 8
-                        mqc.publish(topic_bot_cmd_stage, stage)
+                    # Move to cave exit line follow stage
+                    stage = 8
+                    mqc.publish(topic_bot_cmd_stage, stage)
 
         send_speed_command(cmd_speed, prev_cmd_speed)
         send_move_command(cmd_move, prev_cmd_move)
@@ -473,7 +484,7 @@ while True:
 
         if cv2.pointPolygonTest(triage_region, b_front_midpoint, False) == 1.0:
             # Entered triage region
-            cmd_move = 0 # Stop
+            cmd_move = stop # Unnecessary
 
             # Move to reposition to unload stage
             stage = 9
@@ -486,20 +497,12 @@ while True:
         target_vector = np.array([0, 1])
         angle_error = np.degrees(angle_between(-target_vector, central_parallel))
 
-        if angle_error > angle_threshold_pickup:
-            if unit_cross_prod(target_vector, central_parallel) > 0:
-                cmd_move = 6  # Clockwise - rotate right
-            else:
-                cmd_move = 5  # Anticlockwise - rotate left
-
-            if angle_error < (angle_threshold_pickup*8):
-                cmd_speed = 32
-            else:
-                cmd_speed = 128
+        if angle_error > angle_threshold:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
             
         else:
             # Lined up
-            cmd_move = 0 # Stop
+            cmd_move = stop
 
             # Move to unload stage
             stage = 10
@@ -522,8 +525,8 @@ while True:
 
     ### DISPLAY ###
 
-    cv2.putText(out, "{} {}".format(stage, status), (50, 50), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
-    cv2.putText(out, "{} in command".format(has_cmd), (50, 75), font, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+    cv2.putText(out, "{} {}".format(stage, status), (50, 50), font, 0.5, red, 2, cv2.LINE_AA)
+    cv2.putText(out, "{} in command".format(has_cmd), (50, 75), font, 0.5, red, 2, cv2.LINE_AA)
 
     #frame = cv2.flip(frame, 1)
     #display_frame = cv2.resize(frame, None, fx=0.8, fy=0.8)

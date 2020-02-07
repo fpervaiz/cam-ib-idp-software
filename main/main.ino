@@ -1027,6 +1027,17 @@ void loop()
     case 11:
       // Driver decision
       break;
+
+    case 12:
+      // Computer vision vector control (returning to start box)
+      //collisionAvoidance();
+      break;
+
+    case 13:
+      // Complete
+      // Do whatever
+      cmd_move = STOP;
+      break;
   }
 
   /*

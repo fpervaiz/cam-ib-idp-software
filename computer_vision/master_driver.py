@@ -37,7 +37,8 @@ triage_region = np.array([[810, 570], [1000, 570], [1000, 720], [810, 720]], np.
 
 victim_contour_min_area = 25
 
-victims = [(0,0), (0,0), (0,0), (0,0)]
+#victims = [(0,0), (0,0), (0,0), (0,0)]
+victims = []
 
 send_vectors = False
 stage = -1
@@ -48,6 +49,7 @@ angle_threshold = 4
 
 point_cave_exit_positioning = np.array([480, 335])
 point_cave_exit_line = np.array([545, 335])
+point_start_box_end = np.array([965, 10])
 
 topic_bot_cmd_stage = "/idp/bot/cmd_stage"
 topic_bot_stt_stage = "/idp/bot/stt_stage"
@@ -243,7 +245,7 @@ while True:
 
     (contours, hierarchy) = cv2.findContours(victim, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    victim_index = 0
+    #victim_index = 0
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
         if area >= victim_contour_min_area:
@@ -253,10 +255,15 @@ while True:
                 M = cv2.moments(contour)
                 Vx = int(M['m10']/M['m00'])
                 Vy = int(M['m01']/M['m00'])
-                victims[victim_index] = (Vx, Vy)
-                victim_index += 1
-                if victim_index > 3:
+                distance = np.linalg.norm(np.array((Vx, Vy)) - point_cave_exit_line)
+                victims.append([Vx, Vy, distance])
+                if len(victims) > 4:
                     break
+    
+    # Sort victims by distance and rebuild
+    victims = sorted(victims, key=lambda tup: tup[2])
+    for i in range(len(victims)):
+        victims[i] = (victims[i][0], victims[i][1])
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
@@ -526,8 +533,57 @@ while True:
         has_cmd = "Arduino"
 
     elif stage == 11:
+        status = "Decision to continue or end"
+        has_cmd = "Python"
+
+        del victims[0]
+
+        if victims:
+            # More to rescue: re-enter cave
+            stage = 2
+        else:
+            # Return to start box
+            stage = 12
+
+        mqc.publish(topic_bot_cmd_stage, stage)
+    
+    elif stage == 12:
         status = "Returning to start box"
         has_cmd = "Python"
+
+        if bot_detected:
+            orig = tuple(m1)
+            dest = tuple(point_start_box_end)
+
+            cv2.line(out, dest, orig, yellow, 2)
+
+            target_vector = point_start_box_end - np.array(orig)
+
+            distance = np.linalg.norm(target_vector)
+            angle_error = np.degrees(angle_between(target_vector, central_parallel))
+
+            if angle_error > angle_threshold:
+                cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
+
+            else:
+                cmd_move = straight_forward
+                cmd_speed = nav_speed_high
+
+        else:
+            # Off screen so inside box
+
+            cmd_move = stop
+            cmd_speed = 0
+
+            stage = 13
+            mqc.publish(topic_bot_stt_stage, stage)
+
+        send_speed_command(cmd_speed, prev_cmd_speed)
+        send_move_command(cmd_move, prev_cmd_move)
+
+    elif stage == 13:
+        status = "Complete"
+        has_cmd = "N/A"
     
     else:
         status = "Undefined"

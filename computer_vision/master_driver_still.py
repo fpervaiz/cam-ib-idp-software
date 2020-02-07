@@ -15,7 +15,10 @@ victim_detection_region = np.array([[230, 25], [750, 25], [750, 240], [570, 240]
 
 victim_contour_min_area = 25
 
-victims = [(0, 0), (0, 0), (0, 0), (0, 0)]
+#victims = [(0,0), (0,0), (0,0), (0,0)]
+victims = []
+
+point_cave_exit_line = np.array([545, 335])
 
 send_vectors = False
 
@@ -134,7 +137,6 @@ while True:
     (contours, hierarchy) = cv2.findContours(
         victim, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    victim_index = 0
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
         if area > 25:
@@ -144,10 +146,17 @@ while True:
                 M = cv2.moments(contour)
                 Vx = int(M['m10']/M['m00'])
                 Vy = int(M['m01']/M['m00'])
-                victims[victim_index] = (Vx, Vy)
-                victim_index += 1
-                if victim_index > 3:
+                distance = np.linalg.norm(np.array((Vx, Vy)) - point_cave_exit_line)
+                victims.append([Vx, Vy, distance])
+                if len(victims) > 4:
                     break
+    
+    # Sort victims by distance and rebuild
+    victims = sorted(victims, key=lambda tup: tup[2])
+    for i in range(len(victims)):
+        victims[i] = (victims[i][0], victims[i][1])
+
+    print(victims)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)

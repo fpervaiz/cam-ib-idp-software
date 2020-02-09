@@ -789,6 +789,7 @@ void loop()
     driveMotors();
     Serial.println("Soft reset...");
     mqc.publish(const_topic_bot_debug, "Soft reset...");
+    delay(1000);
     mqc.publish(const_topic_bot_stt_stage, task_state);
   }
 
@@ -1098,8 +1099,24 @@ void loop()
 
     case 14:
       // Complete
-      // Do whatever
-      cmd_move = STOP;
+
+      cmd_move = FWRD;
+      
+      if (temp_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 2000;
+        temp_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          // Health detection wait complete
+          temp_wait_complete = true;
+          cmd_move = 0;
+          task_state = 0;
+          mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+        }
+      }
+
       break;
   }
 

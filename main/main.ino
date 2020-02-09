@@ -19,6 +19,7 @@
 #define pin_indicator_move_led 2
 
 #define pin_btn_start 3
+#define pin_btn_reset 5
 
 #define port_motor_left 1
 #define port_motor_right 2
@@ -370,6 +371,7 @@ bool setupOptors()
 void setupBtns()
 {
   pinMode(pin_btn_start, INPUT_PULLUP);
+  pinMode(pin_btn_reset, INPUT_PULLUP);
 }
 
 // Logic
@@ -377,6 +379,11 @@ void setupBtns()
 bool startBtnPressed()
 {
   return !digitalRead(pin_btn_start);
+}
+
+bool resetBtnPressed()
+{
+  return !digitalRead(pin_btn_reset);
 }
 
 bool isMoving()
@@ -775,8 +782,25 @@ void loop()
     }
   }
 
+  // Check reset button
+  if (resetBtnPressed()) {
+    task_state = 0;
+    cmd_move = STOP;
+    driveMotors();
+    Serial.println("Soft reset...");
+    mqc.publish(const_topic_bot_debug, "Soft reset...");
+    mqc.publish(const_topic_bot_stt_stage, task_state);
+  }
+
   switch (task_state) {
     case 0:
+      if (startBtnPressed())
+      {
+        task_state = 1;
+        Serial.println("Starting main loop");
+        mqc.publish(const_topic_bot_debug, "Starting main loop");  
+        mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+      }          
       break;
 
     case 1:
@@ -925,7 +949,7 @@ void loop()
       //servo_arm.write(const_servo_pos_arm_out);
       //servo_arm.attach(port_servo_arm);
       //delay(1000);
-      
+
       servo_arm.write(const_servo_pos_arm_in);
 
       delay(2000);

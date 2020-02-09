@@ -54,7 +54,7 @@ angle_threshold = 4
 
 point_cave_exit_positioning = np.array([236, 226])
 point_cave_exit_line = np.array([287, 226])
-point_start_box_end = np.array([965, 10])
+point_start_box_end = np.array([534, 7])
 point_cave_reentry = np.array([495, 280])
 
 topic_bot_cmd_stage = "/idp/bot/cmd_stage"
@@ -227,6 +227,9 @@ def send_speed_command(curr, force=False):
         prev_cmd_speed = curr
         print("Command speed: {}".format(curr))
 
+def in_risk_zone(point):
+    return cv2.pointPolygonTest(risk_zone_lower, point, False) == 1.0 or cv2.pointPolygonTest(risk_zone_upper, point, False) == 1.0
+
 def window_write_nav_info(angle, distance, move, speed):
     cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
     cv2.putText(out, "Move {} Speed {}".format(move, speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
@@ -286,11 +289,20 @@ while True:
         if area >= victim_contour_min_area:
             x, y, w, h = cv2.boundingRect(contour)
             if cv2.pointPolygonTest(victim_detection_region, (x, y), False) == 1.0:        
-                cv2.rectangle(out, (x, y), (x+w, y+h), blue, 3)
                 M = cv2.moments(contour)
                 Vx = int(M['m10']/M['m00'])
                 Vy = int(M['m01']/M['m00'])
                 distance = np.linalg.norm(np.array((Vx, Vy)) - point_cave_exit_line)
+
+                if in_risk_zone((Vx, Vy)):
+                    # Pick these up last
+                    distance += 500
+                    colour = red
+                else:
+                    colour = blue
+
+                cv2.rectangle(out, (x, y), (x+w, y+h), colour, 3)
+
                 victims.append([Vx, Vy, distance])
                 if len(victims) > 4:
                     break
@@ -380,6 +392,8 @@ while True:
         status = "Bot line following - start box to cave entrance"
         has_cmd = "Arduino"
 
+        risk_zone = False
+
     elif stage == 3:
         status = "Navigating to victim"
         has_cmd = "Python"
@@ -387,7 +401,12 @@ while True:
         if victims:
 
             orig = tuple(m1)
-            dest = victims[0]
+            if in_risk_zone(victims[0]):
+                dest = (100, victims[0][1])
+                risk_zone = True
+            else:
+                dest = victims[0]
+                #risk_zone = False
 
             cv2.line(out, dest, orig, yellow, 2)
 
@@ -400,7 +419,12 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
-                if distance > 150:
+                if risk_zone:
+                    target_distance = 70
+                else:
+                    target_distance = 150
+
+                if distance > target_distance:
                     cmd_move = straight_forward
                     '''
                     if distance > 50:
@@ -411,6 +435,7 @@ while True:
                     cmd_speed = nav_speed_high
                 else:
                     cmd_move = stop
+                    cmd_speed = nav_speed_high
 
                     # Move to positioning stage
                     move_away_allowed = True
@@ -607,6 +632,8 @@ while True:
             stage = 11
             #mqc.publish(topic_bot_cmd_stage, stage)
 
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)
+        
         send_speed_command(cmd_speed)
         send_move_command(cmd_move)
 
@@ -630,6 +657,7 @@ while True:
             dest = tuple(point_cave_reentry)
 
             target_vector = np.array(dest) - np.array(orig)
+            cv2.line(out, orig, dest, yellow, 2)
 
             distance = np.linalg.norm(target_vector)
             angle_error = np.degrees(angle_between(target_vector, central_parallel))
@@ -671,33 +699,34 @@ while True:
         status = "Returning to start box"
         has_cmd = "Python"
 
-        if bot_detected:
-            orig = tuple(m1)
-            dest = tuple(point_start_box_end)
+        
+        orig = tuple(m1)
+        dest = tuple(point_start_box_end)
 
-            cv2.line(out, dest, orig, yellow, 2)
+        cv2.line(out, dest, orig, yellow, 2)
 
-            target_vector = point_start_box_end - np.array(orig)
+        target_vector = point_start_box_end - np.array(orig)
 
-            distance = np.linalg.norm(target_vector)
-            angle_error = np.degrees(angle_between(target_vector, central_parallel))
+        distance = np.linalg.norm(target_vector)
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-            if angle_error > angle_threshold:
-                cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
-
-            else:
-                cmd_move = straight_forward
-                cmd_speed = nav_speed_high
+        if angle_error > angle_threshold:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
         else:
-            # Off screen so inside box
+            cmd_move = straight_forward
+            cmd_speed = nav_speed_high
+            
+            if distance < 20:    
+                # Inside box
+                cmd_move = stop
+                cmd_speed = 0
 
-            cmd_move = stop
-            cmd_speed = 0
+                stage = 14
+                #mqc.publish(topic_bot_stt_stage, stage)
 
-            stage = 14
-            #mqc.publish(topic_bot_stt_stage, stage)
-
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)     
+        
         send_speed_command(cmd_speed)
         send_move_command(cmd_move)
 

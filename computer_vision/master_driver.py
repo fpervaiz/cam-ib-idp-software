@@ -36,6 +36,9 @@ victim_upper = np.array([60, 255, 255], np.uint8)
 victim_detection_region = np.array([[230, 25],[750, 25],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
 triage_region = np.array([[810, 500], [1000, 500], [1000, 720], [810, 720]], np.int32).reshape((-1,1,2))
 
+risk_zone_upper = np.array([[500, 25],[750, 25],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
+risk_zone_lower = np.array([[500, 450],[750, 450],[750, 700],[500, 700]], np.int32).reshape((-1,1,2))
+
 victim_contour_min_area = 25
 
 #victims = [(0,0), (0,0), (0,0), (0,0)]
@@ -48,8 +51,8 @@ prev_cmd_speed = 255
 
 angle_threshold = 4
 
-point_cave_exit_positioning = np.array([480, 335])
-point_cave_exit_line = np.array([545, 335])
+point_cave_exit_positioning = np.array([500, 335])
+point_cave_exit_line = np.array([590, 335])
 point_start_box_end = np.array([965, 10])
 point_cave_reentry = np.array([905, 445])
 
@@ -144,24 +147,44 @@ def on_message(client, userdata, message):
             stage = 3
 
         elif int(payload) == 4 and stage == 3:
-            # Detecting victim health
+            # Positioning to load
             stage = 4
 
         elif int(payload) == 5 and stage == 4:
-            # Loading victim
+            # Health detection wait
             stage = 5
 
         elif int(payload) == 6 and stage == 5:
-            # Navigating to cave exit
+            # Load victim
             stage = 6
             
         elif int(payload) == 7 and stage == 6:
-            # Bot line following - cave exit to triage area
+            # Navigate to cave exit
             stage = 7
 
         elif int(payload) == 8 and stage == 7:
-            # Unloading victim
+            # Positioning for cave exit line following
             stage = 8
+
+        elif int(payload) == 9 and stage == 8:
+            # Bot line following - cave exit to triage area
+            stage = 9
+
+        elif int(payload) == 10 and stage == 9:
+            # Reposition for unloading
+            stage = 10
+
+        elif int(payload) == 11 and stage == 10:
+            # Unloading victim
+            stage = 11
+
+        elif int(payload) == 12 and stage == 11:
+            # Decision
+            stage = 12
+
+        elif int(payload) == 13 and stage == 12:
+            # Return to start box
+            stage = 13
 
         else:
             # Undefined
@@ -170,6 +193,11 @@ def on_message(client, userdata, message):
     elif message.topic == topic_bot_stt_drop_stage:
         stage = int(payload)
         print("Set stage to {} on receiving dropped connection restate".format(payload))
+
+        if stage in [3, 4, 7, 8, 10, 12, 13]:
+            # Re-command speed and move when reconnected
+            send_speed_command(cmd_speed, force=True)
+            send_move_command(cmd_move, force=True)
 
 def calculate_turn_command(target_vector, bot_vector, error, threshold):
     if unit_cross_prod(target_vector, bot_vector) > 0:
@@ -201,6 +229,9 @@ def send_speed_command(curr, force=False):
 def window_write_nav_info(angle, distance, move, speed):
     cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
     cv2.putText(out, "Move {} Speed {}".format(move, speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
+
+def in_risk_zone(point):
+    return cv2.pointPolygonTest(risk_zone_lower, point, False) == 1.0 or cv2.pointPolygonTest(risk_zone_upper, point, False) == 1.0
 
 mqc = mqtt.Client("MASTER")
 mqc.connect("192.168.137.1")
@@ -239,6 +270,8 @@ while True:
 
     cv2.drawContours(out, [victim_detection_region], 0, green, 1)
     cv2.drawContours(out, [triage_region], 0, red, 1)
+    cv2.drawContours(out, [risk_zone_lower], 0, red, 1)
+    cv2.drawContours(out, [risk_zone_upper], 0, red, 1)
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     victim = cv2.inRange(hsv, victim_lower, victim_upper)
@@ -255,11 +288,20 @@ while True:
         if area >= victim_contour_min_area:
             x, y, w, h = cv2.boundingRect(contour)
             if cv2.pointPolygonTest(victim_detection_region, (x, y), False) == 1.0:        
-                cv2.rectangle(out, (x, y), (x+w, y+h), blue, 3)
                 M = cv2.moments(contour)
                 Vx = int(M['m10']/M['m00'])
                 Vy = int(M['m01']/M['m00'])
                 distance = np.linalg.norm(np.array((Vx, Vy)) - point_cave_exit_line)
+
+                if in_risk_zone((Vx, Vy)):
+                    # Pick these up last
+                    distance += 500
+                    colour = red
+                else:
+                    colour = blue
+
+                cv2.rectangle(out, (x, y), (x+w, y+h), colour, 3)
+
                 victims.append([Vx, Vy, distance])
                 if len(victims) > 4:
                     break
@@ -349,6 +391,8 @@ while True:
         status = "Bot line following - start box to cave entrance"
         has_cmd = "Arduino"
 
+        risk_zone = False
+
     elif stage == 3:
         status = "Navigating to victim"
         has_cmd = "Python"
@@ -356,7 +400,12 @@ while True:
         if victims:
 
             orig = tuple(m1)
-            dest = victims[0]
+            if in_risk_zone(victims[0]):
+                dest = (100, victims[0][1])
+                risk_zone = True
+            else:
+                dest = victims[0]
+                #risk_zone = False
 
             cv2.line(out, dest, orig, yellow, 2)
 
@@ -369,7 +418,12 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
-                if distance > 150:
+                if risk_zone:
+                    target_distance = 70
+                else:
+                    target_distance = 150
+
+                if distance > target_distance:
                     cmd_move = straight_forward
                     '''
                     if distance > 50:
@@ -380,6 +434,7 @@ while True:
                     cmd_speed = nav_speed_high
                 else:
                     cmd_move = stop
+                    cmd_speed = nav_speed_high
 
                     # Move to positioning stage
                     move_away_allowed = True
@@ -390,6 +445,11 @@ while True:
             
             send_speed_command(cmd_speed)
             send_move_command(cmd_move)
+        
+        else:
+            # No victims found! Exit cave.
+            stage = 7
+            mqc.publish(topic_bot_cmd_stage, stage)
 
     elif stage == 4:
         status = "Positioning to load victim"
@@ -464,11 +524,11 @@ while True:
         has_cmd = "Python"
 
         orig = tuple(m1)
-        dest = tuple(point_cave_exit_line)
+        dest = tuple(point_cave_exit_positioning)
 
         cv2.line(out, orig, dest, yellow, 2)
 
-        target_vector = point_cave_exit_line - np.array(orig) 
+        target_vector = point_cave_exit_positioning - np.array(orig) 
         distance = np.linalg.norm(target_vector)
         angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
@@ -479,33 +539,16 @@ while True:
                 
             if distance > 5:
                 cmd_move = straight_forward
-                if distance > 40:
+                if distance > 20:
                     cmd_speed = nav_speed_high
+                    angle_control_allowed = True
                 else:
                     cmd_speed = nav_speed_low
+                    angle_control_allowed = False
             else:
-                '''
-                cmd_move = stop
-                angle_control_allowed = False
-
-                # Turn parallel to exit line
-                target_vector = np.array([1, 0])
-                angle_error = np.degrees(angle_between(target_vector, central_parallel))
-
-                if angle_error > angle_threshold:
-                    cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
-                    
-                else:
-                    # Lined up with exit line
-                    cmd_move = stop
-
-                    # Move to cave exit line follow stage
-                    stage = 8
-                    mqc.publish(topic_bot_cmd_stage, stage)
-                '''
 
                 cmd_move = stop
-                angle_control_allowed = False
+                angle_control_allowed = True
 
                 # Move to cave exit line follow stage
                 stage = 8
@@ -517,6 +560,46 @@ while True:
         send_move_command(cmd_move)
 
     elif stage == 8:
+        status = "Positioning for cave exit line following"
+        has_cmd = "Python"
+
+        orig = tuple(m1)
+        dest = tuple(point_cave_exit_line)
+
+        cv2.line(out, orig, dest, yellow, 2)
+
+        target_vector = point_cave_exit_line - np.array(orig) 
+        distance = np.linalg.norm(target_vector)
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))
+
+        if angle_error > angle_threshold and angle_control_allowed:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
+
+        else:
+                
+            if distance > 4:
+                cmd_move = straight_forward
+                if distance > 20:
+                    cmd_speed = nav_speed_high
+                    angle_control_allowed = True
+                else:
+                    cmd_speed = nav_speed_low
+                    angle_control_allowed = False
+            else:
+                # Lined up with exit line
+                cmd_move = stop
+
+                # Move to cave exit line follow stage
+                stage = 9
+                mqc.publish(topic_bot_cmd_stage, stage)
+
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)
+        
+        send_speed_command(cmd_speed)
+        send_move_command(cmd_move)
+
+    
+    elif stage == 9:
         status = "Bot line following - cave exit to triage area"
         has_cmd = "Arduino"
 
@@ -527,18 +610,18 @@ while True:
             cmd_move = stop # Unnecessary
 
             # Move to reposition to unload stage
-            stage = 9
+            stage = 10
             mqc.publish(topic_bot_cmd_stage, stage)
 
-    elif stage == 9:
+    elif stage == 10:
         status = "Repositioning for unloading"
         has_cmd = "Python"
 
         orig = tuple((int(m1[0]), int(m1[1])))
-        dest = tuple((int(m1[0]), int(m1[1] - 100)))
+        dest = tuple((int(m1[0]), int(m1[1] - 200)))
 
         target_vector = np.array(dest) - np.array(orig)
-        angle_error = np.degrees(angle_between(-target_vector, central_parallel))        
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))        
 
         cv2.line(out, orig, dest, yellow, 2)
 
@@ -550,24 +633,26 @@ while True:
             cmd_move = stop
 
             # Move to unload stage
-            stage = 10
+            stage = 11
             mqc.publish(topic_bot_cmd_stage, stage)
+
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)
 
         send_speed_command(cmd_speed)
         send_move_command(cmd_move)
 
-    elif stage == 10:
+    elif stage == 11:
         status = "Unloading victim"
         has_cmd = "Arduino"
 
         # For next stage
         angle_control_allowed = True
 
-    elif stage == 11:
+    elif stage == 12:
         status = "Decision to continue or end"
         has_cmd = "Python"
 
-        del victims[0]
+        #del victims[0]
 
         if victims:
             # More to rescue: re-enter cave
@@ -576,6 +661,7 @@ while True:
             dest = tuple(point_cave_reentry)
 
             target_vector = np.array(dest) - np.array(orig)
+            cv2.line(out, orig, dest, yellow, 2)
 
             distance = np.linalg.norm(target_vector)
             angle_error = np.degrees(angle_between(target_vector, central_parallel))
@@ -584,13 +670,15 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
-                if distance > 40:
+                if distance > 20:
                     cmd_move = straight_forward
-                    if distance > 60:
+                    if distance > 30:
                         cmd_speed = nav_speed_high
+                        angle_control_allowed = True
                     else:
-                        angle_control_allowed = False
+                        
                         cmd_speed = nav_speed_low
+                        angle_control_allowed = False
                 else:
                     cmd_move = stop
 
@@ -607,45 +695,46 @@ while True:
 
         else:
             # Return to start box
-            stage = 12
+            stage = 13
 
         mqc.publish(topic_bot_cmd_stage, stage)
     
-    elif stage == 12:
+    elif stage == 13:
         status = "Returning to start box"
         has_cmd = "Python"
 
-        if bot_detected:
-            orig = tuple(m1)
-            dest = tuple(point_start_box_end)
+        
+        orig = tuple(m1)
+        dest = tuple(point_start_box_end)
 
-            cv2.line(out, dest, orig, yellow, 2)
+        cv2.line(out, dest, orig, yellow, 2)
 
-            target_vector = point_start_box_end - np.array(orig)
+        target_vector = point_start_box_end - np.array(orig)
 
-            distance = np.linalg.norm(target_vector)
-            angle_error = np.degrees(angle_between(target_vector, central_parallel))
+        distance = np.linalg.norm(target_vector)
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-            if angle_error > angle_threshold:
-                cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
-
-            else:
-                cmd_move = straight_forward
-                cmd_speed = nav_speed_high
+        if angle_error > angle_threshold:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
         else:
-            # Off screen so inside box
+            cmd_move = straight_forward
+            cmd_speed = nav_speed_high
+            
+            if distance < 20:    
+                # Inside box
+                cmd_move = stop
+                cmd_speed = 0
 
-            cmd_move = stop
-            cmd_speed = 0
+                stage = 14
+                #mqc.publish(topic_bot_stt_stage, stage)
 
-            stage = 13
-            mqc.publish(topic_bot_stt_stage, stage)
-
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)     
+        
         send_speed_command(cmd_speed)
         send_move_command(cmd_move)
 
-    elif stage == 13:
+    elif stage == 14:
         status = "Complete"
         has_cmd = "N/A"
     

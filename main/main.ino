@@ -963,10 +963,16 @@ void loop()
       // Computer vision vector control (navigate to cave exit)
       //cmd_speed = const_motor_half_speed;
       //collisionAvoidance();
+      break;
+    
+    case 8:
+      // Computer vision vector control (positioning for line following cave exit)
+      //cmd_speed = const_motor_half_speed;
+      //collisionAvoidance();
       line_follow_complete = false; 
       break;
 
-    case 8:
+    case 9:
       // Line follow cave exit to triage box
       if (!line_follow_complete) {
         lineFollow3();
@@ -975,28 +981,44 @@ void loop()
         // Reached triage box line (should never get here)
         cmd_move = STOP;
         
-        task_state = 9;
+        task_state = 10;
         mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
         line_follow_complete = false;
       }
       break;
 
-    case 9:
+    case 10:
       // Computer vision vector control (reposition for unloading)
       //cmd_speed = const_motor_half_speed;
       //collisionAvoidance(); 
       break;
 
-    case 10:
+    case 11:
       // Unload victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
+
+      // Reverse
       cmd_speed = 192;
       cmd_move = RVRS;
       driveMotors();
       delay(1000);
       cmd_move = STOP;
       driveMotors();
+
+      delay(1000);
+
+      // Turn slight clockwise to collect victim
+      cmd_speed = 48;
+      cmd_move = ROTR;
+      driveMotors();
+      delay(1000);
+      cmd_move = STOP;
+      driveMotors();
+
+      delay(1000);
+
+      // Servos
 
       servo_arm.write(const_servo_pos_arm_out);
       servo_tray.write(const_servo_pos_tray_down);
@@ -1020,7 +1042,7 @@ void loop()
       servo_arm.detach();
       servo_tray.detach();
 
-      task_state = 11;
+      task_state = 12;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
       /*
@@ -1042,16 +1064,16 @@ void loop()
 
       break;
 
-    case 11:
+    case 12:
       // Driver decision
       break;
 
-    case 12:
+    case 13:
       // Computer vision vector control (returning to start box)
       //collisionAvoidance();
       break;
 
-    case 13:
+    case 14:
       // Complete
       // Do whatever
       cmd_move = STOP;

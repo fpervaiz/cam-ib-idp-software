@@ -425,14 +425,14 @@ void driveMotors()
       R_MOTOR->setSpeed(cmd_speed);
       break;
     case 3: // Pivot left
-      L_MOTOR->run(BACKWARD);
-      R_MOTOR->run(RELEASE);
+      L_MOTOR->run(RELEASE);
+      R_MOTOR->run(FORWARD);
       L_MOTOR->setSpeed(cmd_speed);
       R_MOTOR->setSpeed(cmd_speed);
       break;
     case 4: // Pivot right
-      L_MOTOR->run(RELEASE);
-      R_MOTOR->run(BACKWARD);
+      L_MOTOR->run(FORWARD);
+      R_MOTOR->run(RELEASE);
       L_MOTOR->setSpeed(cmd_speed);
       R_MOTOR->setSpeed(cmd_speed);
       break;
@@ -912,11 +912,20 @@ void loop()
       cmd_move = STOP;
       driveMotors();
 
-      servo_arm.write(const_servo_pos_arm_out);
-      //servo_arm.attach(port_servo_arm);
-
+      // Turn slight clockwise to collect victim
+      cmd_speed = 48;
+      cmd_move = ROTL;
+      driveMotors();
       delay(1000);
+      cmd_move = STOP;
+      driveMotors();
 
+      delay(2000);
+
+      //servo_arm.write(const_servo_pos_arm_out);
+      //servo_arm.attach(port_servo_arm);
+      //delay(1000);
+      
       servo_arm.write(const_servo_pos_arm_in);
 
       delay(2000);
@@ -1001,16 +1010,6 @@ void loop()
       // Reverse
       cmd_speed = 192;
       cmd_move = RVRS;
-      driveMotors();
-      delay(1000);
-      cmd_move = STOP;
-      driveMotors();
-
-      delay(1000);
-
-      // Turn slight clockwise to collect victim
-      cmd_speed = 48;
-      cmd_move = ROTR;
       driveMotors();
       delay(1000);
       cmd_move = STOP;

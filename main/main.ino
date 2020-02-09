@@ -38,9 +38,9 @@
 #define const_sens_optor_working_maximum 1023
 
 #define const_servo_pos_tray_up 135
-#define const_servo_pos_tray_down 145
-#define const_servo_pos_arm_in 110
-#define const_servo_pos_arm_out 25
+#define const_servo_pos_tray_down 165
+#define const_servo_pos_arm_in 145
+#define const_servo_pos_arm_out 40
 
 #define const_topic_bot_cmd_stage "/idp/bot/cmd_stage"
 #define const_topic_bot_stt_stage "/idp/bot/stt_stage"
@@ -214,6 +214,7 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
     else if (strcmp(buf_topic, const_topic_bot_cmd_mech) == 0) {
 
       Serial.println("Opening mechanism for loading");
+      mqc.publish(const_topic_bot_debug, "Opening mechanism for loading");
       mech_open_cmd_recvd = true;
 
     }
@@ -297,7 +298,7 @@ void setupIndicators()
   pinMode(pin_indicator_move_led, OUTPUT);
 }
 
-void setupOptors()
+bool setupOptors()
 {
   pinMode(pin_sens_optor_l, INPUT);
   pinMode(pin_sens_optor_c, INPUT);
@@ -339,6 +340,7 @@ void setupOptors()
     mqc.publish(const_topic_bot_debug, String(r2).c_str());
     mqc.publish(const_topic_bot_debug, String(r3).c_str());
     
+    /*
     Serial.println("EXECUTION HALTED");
     mqc.publish(const_topic_bot_debug, "EXECUTION HALTED");
 
@@ -346,6 +348,7 @@ void setupOptors()
     {
       delay(10000);
     }
+    */
   }
   else {
     Serial.println("All optoreflector readings inside range.");
@@ -360,6 +363,8 @@ void setupOptors()
     mqc.publish(const_topic_bot_debug, String(r2).c_str());
     mqc.publish(const_topic_bot_debug, String(r3).c_str());
   }
+
+  return failure;
 }
 
 void setupBtns()
@@ -466,6 +471,7 @@ void lineFollow()
     cmd_move = STOP;
     Serial.println("Lost.");
     mqc.publish(const_topic_bot_debug, "Lost.");
+    delay(1000);
   }
   else if (b1 && b2 && !b3)
   {
@@ -614,6 +620,7 @@ void lineFollow3()
     cmd_move = STOP;
     Serial.println("Lost.");
     mqc.publish(const_topic_bot_debug, "Lost.");
+    delay(1000);
   }
   else if (b1 && b2 && !b3)
   {
@@ -641,9 +648,9 @@ void lineFollow3()
   }
   else if (!b1 && b2 && !b3)
   {
-    // W B W - junction - decision - rightward bias to exit cave right
+    // W B W - junction - decision - to be implemented
     cmd_speed = const_motor_half_speed;
-    cmd_move = PVTR;
+    cmd_move = FWRD;
   }
   else if (!b1 && !b2 && b3)
   {
@@ -653,7 +660,7 @@ void lineFollow3()
   }
   else if (!b1 && !b2 && !b3)
   {
-    // W W W - junction - rightward bias
+    // W W W - junction - decision - rightward bias to exit cave
     cmd_speed = const_motor_half_speed;
     cmd_move = PVTR;
     //line_follow_complete = true;
@@ -713,7 +720,9 @@ void setup()
   setupBtns();
   setupIndicators();
   setupUltrasound();
-  setupOptors();
+  if (setupOptors()) {
+    delay(1000);
+  }
 
   // Send 0 state to driver
   task_state = 0;
@@ -847,11 +856,12 @@ void loop()
         servo_tray.attach(port_servo_tray);
 
         mech_open_triggered = true;
+        mech_ready_to_pickup = true;
       }
-      
+      /*
       if (temp_wait_complete) {
         temp_timestore = millis();
-        temp_time_interval = 500;
+        temp_time_interval = 1500;
         temp_wait_complete = false;
       }
       else {
@@ -866,6 +876,7 @@ void loop()
 
         }
       }
+      */
 
       //collisionAvoidance();
       break;
@@ -897,26 +908,32 @@ void loop()
       cmd_speed = 48;
       cmd_move = RVRS;
       driveMotors();
-      delay(500);
+      delay(1000);
       cmd_move = STOP;
       driveMotors();
 
       servo_arm.write(const_servo_pos_arm_out);
-      servo_arm.attach(port_servo_arm);
+      //servo_arm.attach(port_servo_arm);
 
-      delay(50);
+      delay(1000);
 
+      servo_arm.write(const_servo_pos_arm_in);
+
+      delay(2000);
+
+      /*
       for (int pos = const_servo_pos_arm_out; pos <= const_servo_pos_arm_in; pos += 10) {
         servo_arm.write(pos);
         delay(100);
       }
+      */
 
       servo_arm.detach();
 
       servo_tray.write(const_servo_pos_tray_up);      
-      servo_tray.attach(port_servo_tray);
+      //servo_tray.attach(port_servo_tray);
 
-      delay(500);
+      delay(2000);
 
       servo_tray.detach();
 
@@ -945,7 +962,8 @@ void loop()
     case 7:
       // Computer vision vector control (navigate to cave exit)
       //cmd_speed = const_motor_half_speed;
-      //collisionAvoidance(); 
+      //collisionAvoidance();
+      line_follow_complete = false; 
       break;
 
     case 8:
@@ -986,7 +1004,7 @@ void loop()
       servo_arm.attach(port_servo_arm);
       servo_tray.attach(port_servo_tray);
 
-      delay(500);
+      delay(1000);
 
       cmd_move = FWRD;
       driveMotors();
@@ -997,7 +1015,7 @@ void loop()
       servo_arm.write(const_servo_pos_arm_in);
       servo_tray.write(const_servo_pos_tray_up);
 
-      delay(500);
+      delay(1000);
 
       servo_arm.detach();
       servo_tray.detach();

@@ -18,8 +18,8 @@
 
 #define pin_indicator_move_led 2
 
-#define pin_btn_start 3
-#define pin_btn_reset 5
+#define pin_btn_start 4
+#define pin_btn_reset 3
 
 #define port_motor_left 1
 #define port_motor_right 2
@@ -38,10 +38,10 @@
 #define const_sens_optor_working_minimum 5
 #define const_sens_optor_working_maximum 1023
 
-#define const_servo_pos_tray_up 135
-#define const_servo_pos_tray_down 165
+#define const_servo_pos_tray_up 78
+#define const_servo_pos_tray_down 105
 #define const_servo_pos_arm_in 145
-#define const_servo_pos_arm_out 40
+#define const_servo_pos_arm_out 25
 
 #define const_topic_bot_cmd_stage "/idp/bot/cmd_stage"
 #define const_topic_bot_stt_stage "/idp/bot/stt_stage"
@@ -149,15 +149,15 @@ void setupWifi()
 
 void onMessageReceived(char *topic, byte *payload, unsigned int length)
 {
-    Serial.print("Message arrived [");
-    Serial.print(topic);
+    //Serial.print("Message arrived [");
+    //Serial.print(topic);
 
-    Serial.print("] ");
-    for (int i = 0; i < length; i++)
-    {
-        Serial.print((char)payload[i]);
-    }
-    Serial.println();
+    //Serial.print("] ");
+    //for (int i = 0; i < length; i++)
+    //{
+    //    Serial.print((char)payload[i]);
+    //}
+    //Serial.println();
 
     payload[length] = '\0';
     int payload_val = atoi((char *)payload);
@@ -167,8 +167,8 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
     char buf_topic[str_topic_len];
     str_topic.toCharArray(buf_topic, str_topic_len);
 
-    mqc.publish(const_topic_bot_debug, "Recieved message");
-    mqc.publish(const_topic_bot_debug, buf_topic);
+    //mqc.publish(const_topic_bot_debug, "Recieved message");
+    //mqc.publish(const_topic_bot_debug, buf_topic);
 
     for (int i = 0; i < length; i++)
     {
@@ -181,40 +181,41 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 
     if (strcmp(buf_topic, const_topic_bot_cmd_move) == 0) {
       cmd_move = payload_val;
-
+      /*
       Serial.print("Set cmd_move to ");
       Serial.print(cmd_move);
       Serial.print(" - received ");
       Serial.println(payload_val);
+      */
 
       mqc.publish(const_topic_bot_debug, "Set command move to:");
       mqc.publish(const_topic_bot_debug, String(cmd_move).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_speed) == 0) {
       cmd_speed = payload_val;
-
+      /*
       Serial.print("Set cmd_speed to ");
       Serial.print(cmd_speed);
       Serial.print(" - received ");
       Serial.println(payload_val);
-
+      */
       mqc.publish(const_topic_bot_debug, "Set command speed to:");
       mqc.publish(const_topic_bot_debug, String(cmd_speed).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_stage) == 0) {
       task_state = payload_val;
-
+      /*
       Serial.print("Set task_state to ");
       Serial.print(task_state);
       Serial.print(" - received ");
       Serial.println(payload_val);
-
+      */
       mqc.publish(const_topic_bot_debug, "Set task state to:");
       mqc.publish(const_topic_bot_debug, String(task_state).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_mech) == 0) {
 
-      Serial.println("Opening mechanism for loading");
+      //Serial.println("Opening mechanism for loading");
       mqc.publish(const_topic_bot_debug, "Opening mechanism for loading");
       mech_open_cmd_recvd = true;
 
@@ -222,6 +223,8 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
     else {
       mqc.publish(const_topic_bot_debug, "No match found for topic");
     }
+
+    mqc.publish(const_topic_bot_debug, " ");
     
 }
 
@@ -662,14 +665,16 @@ void lineFollow3()
   else if (!b1 && !b2 && b3)
   {
     // W W B - pivot left
-    cmd_speed = const_motor_half_speed;
+    cmd_speed = const_motor_full_speed;
     cmd_move = PVTL;
   }
   else if (!b1 && !b2 && !b3)
   {
     // W W W - junction - decision - rightward bias to exit cave
-    cmd_speed = const_motor_half_speed;
+    cmd_speed = const_motor_full_speed;
     cmd_move = PVTR;
+    driveMotors();
+    delay(2500);
     //line_follow_complete = true;
   }
   else
@@ -831,6 +836,13 @@ void loop()
       break;
 
     case 2:
+      // Reset
+      if (mech_open_triggered || mech_ready_to_pickup || mech_open_cmd_recvd) {
+        mech_open_triggered = false;
+        mech_ready_to_pickup = false;
+        mech_open_cmd_recvd = false;
+      }      
+
       // Line following to enter cave
       if (!line_follow_complete) {
         lineFollow2();
@@ -971,6 +983,13 @@ void loop()
 
       servo_tray.detach();
 
+      if (!mqc.connected()) {
+        connectMqtt();
+
+        // Force driver to update
+        mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
+      }
+
       task_state = 7;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
@@ -1036,7 +1055,7 @@ void loop()
       cmd_speed = 192;
       cmd_move = RVRS;
       driveMotors();
-      delay(1000);
+      delay(3000);
       cmd_move = STOP;
       driveMotors();
 
@@ -1054,7 +1073,7 @@ void loop()
 
       cmd_move = FWRD;
       driveMotors();
-      delay(1000);
+      delay(2000);
       cmd_move = STOP;
       driveMotors();
 
@@ -1065,6 +1084,13 @@ void loop()
 
       servo_arm.detach();
       servo_tray.detach();
+
+      if (!mqc.connected()) {
+        connectMqtt();
+
+        // Force driver to update
+        mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
+      }
 
       task_state = 12;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
@@ -1090,17 +1116,20 @@ void loop()
 
     case 12:
       // Driver decision
+      line_follow_complete = false;
       break;
 
     case 13:
       // Computer vision vector control (returning to start box)
       //collisionAvoidance();
+      temp_wait_complete = true;
       break;
 
     case 14:
       // Complete
 
       cmd_move = FWRD;
+      cmd_speed = const_motor_full_speed;
       
       if (temp_wait_complete) {
         temp_timestore = millis();
@@ -1136,4 +1165,5 @@ void loop()
   driveMotors();
 
   mqc.loop();
+  delay(10);
 }

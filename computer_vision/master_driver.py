@@ -33,10 +33,10 @@ angle_control_allowed = True
 victim_lower = np.array([35, 70, 150], np.uint8)
 victim_upper = np.array([60, 255, 255], np.uint8)
 
-victim_detection_region = np.array([[230, 25],[750, 25],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
+victim_detection_region = np.array([[230, 5],[750, 5],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
 triage_region = np.array([[810, 500], [1000, 500], [1000, 720], [810, 720]], np.int32).reshape((-1,1,2))
 
-risk_zone_upper = np.array([[500, 25],[750, 25],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
+risk_zone_upper = np.array([[500, 5],[750, 5],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
 risk_zone_lower = np.array([[500, 450],[750, 450],[750, 700],[500, 700]], np.int32).reshape((-1,1,2))
 
 victim_contour_min_area = 25
@@ -52,9 +52,10 @@ prev_cmd_speed = 255
 angle_threshold = 4
 
 point_cave_exit_positioning = np.array([500, 335])
-point_cave_exit_line = np.array([590, 335])
+point_cave_exit_line = np.array([580, 335])
 point_start_box_end = np.array([965, 10])
-point_cave_reentry = np.array([905, 445])
+#point_cave_reentry = np.array([905, 445])
+point_cave_reentry = np.array([925, 500])
 
 topic_bot_cmd_stage = "/idp/bot/cmd_stage"
 topic_bot_stt_stage = "/idp/bot/stt_stage"
@@ -217,14 +218,14 @@ def send_move_command(curr, force=False):
     if (force) or (not curr == prev_cmd_move):
         mqc.publish(topic_bot_cmd_move, curr)
         prev_cmd_move = curr
-        print("Command move: {}".format(curr))
+        print("\nCommand move: {}".format(curr))
 
 def send_speed_command(curr, force=False):
     global prev_cmd_speed
-    if not curr == prev_cmd_speed:
+    if (force) or (not curr == prev_cmd_speed):
         mqc.publish(topic_bot_cmd_speed, curr)
         prev_cmd_speed = curr
-        print("Command speed: {}".format(curr))
+        print("\nCommand speed: {}".format(curr))
 
 def window_write_nav_info(angle, distance, move, speed):
     cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
@@ -405,7 +406,7 @@ while True:
                 risk_zone = True
             else:
                 dest = victims[0]
-                #risk_zone = False
+                risk_zone = False
 
             cv2.line(out, dest, orig, yellow, 2)
 
@@ -537,9 +538,9 @@ while True:
         
         else:
                 
-            if distance > 5:
+            if distance > 10:
                 cmd_move = straight_forward
-                if distance > 20:
+                if distance > 50:#20
                     cmd_speed = nav_speed_high
                     angle_control_allowed = True
                 else:
@@ -577,9 +578,9 @@ while True:
 
         else:
                 
-            if distance > 4:
+            if distance > 15:
                 cmd_move = straight_forward
-                if distance > 20:
+                if distance > 50:#20
                     cmd_speed = nav_speed_high
                     angle_control_allowed = True
                 else:
@@ -670,9 +671,9 @@ while True:
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
             else:
-                if distance > 20:
+                if distance > 10:#10
                     cmd_move = straight_forward
-                    if distance > 30:
+                    if distance > 50:#30
                         cmd_speed = nav_speed_high
                         angle_control_allowed = True
                     else:
@@ -685,6 +686,7 @@ while True:
                     # Move to line following cave reentry stage
                     angle_control_allowed = True
                     move_away_allowed = True
+                    load_mech_opened = False
                     stage = 2
                     mqc.publish(topic_bot_cmd_stage, stage)
             
@@ -695,9 +697,9 @@ while True:
 
         else:
             # Return to start box
+            angle_control_allowed = True
             stage = 13
-
-        mqc.publish(topic_bot_cmd_stage, stage)
+            mqc.publish(topic_bot_cmd_stage, stage)
     
     elif stage == 13:
         status = "Returning to start box"
@@ -714,20 +716,21 @@ while True:
         distance = np.linalg.norm(target_vector)
         angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-        if angle_error > angle_threshold:
+        if angle_error > angle_threshold and angle_control_allowed:
             cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
 
         else:
             cmd_move = straight_forward
             cmd_speed = nav_speed_high
             
-            if distance < 20:    
+            if distance < 50:
                 # Inside box
+                angle_control_allowed = False
                 cmd_move = stop
                 cmd_speed = 0
 
                 stage = 14
-                #mqc.publish(topic_bot_stt_stage, stage)
+                mqc.publish(topic_bot_cmd_stage, stage)
 
         window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)     
         

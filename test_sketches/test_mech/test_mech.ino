@@ -3,10 +3,10 @@
 Servo servo_arm;
 Servo servo_tray;
 
-#define const_servo_pos_tray_up 135
-#define const_servo_pos_tray_down 165
+#define const_servo_pos_tray_up 78
+#define const_servo_pos_tray_down 105
 #define const_servo_pos_arm_in 145
-#define const_servo_pos_arm_out 40
+#define const_servo_pos_arm_out 25
 
 #define port_servo_arm 9
 #define port_servo_tray 10

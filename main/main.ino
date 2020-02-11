@@ -147,6 +147,18 @@ void setupWifi()
 
 // MQTT functions
 
+void onMqttConnectActions() {
+  Serial.println("connected");
+  // Once connected, publish an announcement...
+  mqc.publish(const_topic_bot_debug, "MQTT connected.");
+
+  // ... and subscribe
+  mqc.subscribe(const_topic_bot_cmd_move);
+  mqc.subscribe(const_topic_bot_cmd_speed);
+  mqc.subscribe(const_topic_bot_cmd_stage);
+  mqc.subscribe(const_topic_bot_cmd_mech);
+}
+
 void onMessageReceived(char *topic, byte *payload, unsigned int length)
 {
     //Serial.print("Message arrived [");
@@ -236,24 +248,15 @@ void connectMqtt()
         // Attempt to connect
         if (mqc.connect("arduinoClient"))
         {
-            Serial.println("connected");
-            // Once connected, publish an announcement...
-            mqc.publish(const_topic_bot_debug, "MQTT connected.");
-
-            // ... and subscribe
-            mqc.subscribe(const_topic_bot_cmd_move);
-            mqc.subscribe(const_topic_bot_cmd_speed);
-            mqc.subscribe(const_topic_bot_cmd_stage);
-            mqc.subscribe(const_topic_bot_cmd_mech);
-
+            onMqttConnectActions();
         }
         else
         {
             Serial.print("failed, rc=");
             Serial.print(mqc.state());
-            Serial.println(" try again in 5 seconds");
-            // Wait 5 seconds before retrying
-            delay(5000);
+            Serial.println(" try again in 2 seconds");
+            // Wait 2 seconds before retrying
+            delay(2000);
         }
     }
 }
@@ -982,14 +985,14 @@ void loop()
       delay(2000);
 
       servo_tray.detach();
-
+      /*
       if (!mqc.connected()) {
         connectMqtt();
 
         // Force driver to update
         mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
       }
-
+      */
       task_state = 7;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
@@ -1084,14 +1087,14 @@ void loop()
 
       servo_arm.detach();
       servo_tray.detach();
-
+      /*
       if (!mqc.connected()) {
         connectMqtt();
 
         // Force driver to update
         mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
       }
-
+      */
       task_state = 12;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 

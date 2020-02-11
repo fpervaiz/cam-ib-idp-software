@@ -65,6 +65,10 @@ topic_bot_cmd_move = "/idp/bot/cmd_move"
 topic_bot_cmd_speed = "/idp/bot/cmd_speed"
 topic_bot_cmd_mech = "/idp/bot/cmd_mech"
 
+last_cmd_move_time = 0
+last_cmd_speed_time = 0
+transmit_interval = 10
+
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 def unit_vector(vector):
@@ -376,6 +380,15 @@ while True:
     
     ### DRIVING ###
 
+    if int(time.time()) - last_cmd_move_time > transmit_interval:
+        if stage in [3, 4, 7, 8, 10, 12, 13]:
+            last_cmd_move_time = int(time.time())
+            send_speed_command(cmd_speed, force=True)
+    if int(time.time()) - last_cmd_speed_time > transmit_interval:
+        if stage in [3, 4, 7, 8, 10, 12, 13]:
+            last_cmd_speed_time = int(time.time())
+            send_move_command(cmd_move, force=True)            
+
     if stage == -1:
         status = "Waiting for Arduino..."
         has_cmd = "Arduino"
@@ -468,7 +481,7 @@ while True:
         # Calibration
         #angle_error += 10
 
-        if distance < 150 and move_away_allowed:
+        if distance < 160 and move_away_allowed:
             cmd_speed = nav_speed_high
             cmd_move = straight_reverse
         else:
@@ -683,23 +696,31 @@ while True:
                 else:
                     cmd_move = stop
 
-                    # Move to line following cave reentry stage
+                    # Move to line search for line following cave reentry stage
                     angle_control_allowed = True
                     move_away_allowed = True
                     load_mech_opened = False
-                    stage = 2
+                    stage = 15
                     mqc.publish(topic_bot_cmd_stage, stage)
             
             window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)            
             
             send_speed_command(cmd_speed)
             send_move_command(cmd_move)
-
+        
         else:
             # Return to start box
             angle_control_allowed = True
             stage = 13
             mqc.publish(topic_bot_cmd_stage, stage)
+        
+        '''
+            # Go to line search
+
+            stage = 15
+            mqc.publish(topic_bot_cmd_stage, stage)
+        '''
+
     
     elif stage == 13:
         status = "Returning to start box"
@@ -740,6 +761,10 @@ while True:
     elif stage == 14:
         status = "Complete"
         has_cmd = "N/A"
+
+    elif stage == 15:
+        status = "Searching for line"
+        has_cmd = "Arduino"
     
     else:
         status = "Undefined"

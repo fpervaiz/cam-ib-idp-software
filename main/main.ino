@@ -17,6 +17,7 @@
 #define pin_sens_optor_r A2
 
 #define pin_indicator_move_led 2
+#define pin_indicator_mqtt_led 5
 
 #define pin_btn_start 4
 #define pin_btn_reset 3
@@ -242,6 +243,7 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 
 void connectMqtt()
 {
+    digitalWrite(pin_indicator_mqtt_led, HIGH);
     while (!mqc.connected())
     {
         Serial.print("Attempting MQTT connection...");
@@ -259,6 +261,7 @@ void connectMqtt()
             delay(2000);
         }
     }
+    digitalWrite(pin_indicator_mqtt_led, LOW);
 }
 
 void setupMqtt()
@@ -303,6 +306,7 @@ void setupServos()
 void setupIndicators()
 {
   pinMode(pin_indicator_move_led, OUTPUT);
+  pinMode(pin_indicator_mqtt_led, OUTPUT);
 }
 
 bool setupOptors()
@@ -1120,6 +1124,7 @@ void loop()
     case 12:
       // Driver decision
       line_follow_complete = false;
+      temp_wait_complete = true;
       break;
 
     case 13:
@@ -1150,6 +1155,53 @@ void loop()
       }
 
       break;
+
+    case 15:
+      // Line search
+      /*
+      if (left_wait_complete && right_wait_complete) {
+        temp_timestore = millis();
+        temp_time_interval = 3000;
+        left_wait_complete = false;
+      }
+      else {
+        if (millis() - temp_timestore > temp_time_interval) {
+          left_wait_complete = true;
+          right_wait_complete = true;
+        }
+      }
+      else {
+      if (optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold)) {
+        cmd_move = ROTR;
+        cmd_speed = 192;
+      }
+      else {
+        cmd_move = STOP;
+
+        task_state = 2;
+        mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+      }
+      */
+
+      // BLOCKING
+      cmd_move = ROTL;
+      cmd_speed = 192;
+      driveMotors();
+      delay(1500);
+      
+      while (optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold)) {
+        cmd_move = ROTR;
+        cmd_speed = 72;
+        driveMotors();
+        mqc.loop();
+        delay(10);
+      }
+
+      // Line found
+      task_state = 2;
+      mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+      break;
+      
   }
 
   /*

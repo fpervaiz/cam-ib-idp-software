@@ -49,6 +49,9 @@ stage = -1
 prev_cmd_move = -1
 prev_cmd_speed = 255
 
+cmd_move = 0
+cmd_speed = 0
+
 angle_threshold = 4
 
 point_cave_exit_positioning = np.array([500, 335])
@@ -143,7 +146,7 @@ def on_message(client, userdata, message):
             # Exiting start box
             stage = 1
             
-        elif int(payload) == 2 and stage == 1:
+        elif int(payload) == 2 and stage == 1 or int(payload) == 2 and stage == 15:
             # Line following - start to cave entry
             stage = 2
 
@@ -380,13 +383,13 @@ while True:
     
     ### DRIVING ###
 
-    if int(time.time()) - last_cmd_move_time > transmit_interval:
-        if stage in [3, 4, 7, 8, 10, 12, 13]:
-            last_cmd_move_time = int(time.time())
-            send_speed_command(cmd_speed, force=True)
     if int(time.time()) - last_cmd_speed_time > transmit_interval:
         if stage in [3, 4, 7, 8, 10, 12, 13]:
             last_cmd_speed_time = int(time.time())
+            send_speed_command(cmd_speed, force=True)
+    if int(time.time()) - last_cmd_move_time > transmit_interval:
+        if stage in [3, 4, 7, 8, 10, 12, 13]:
+            last_cmd_move_time = int(time.time())
             send_move_command(cmd_move, force=True)            
 
     if stage == -1:

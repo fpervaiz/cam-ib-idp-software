@@ -87,6 +87,7 @@ bool line_follow_complete = false;
 bool mech_open_cmd_recvd = false;
 bool mech_ready_to_pickup = false;
 bool mech_open_triggered = false;
+bool marxism = false;
 
 int task_state = 0;
 
@@ -593,19 +594,30 @@ void lineFollow2()
   {
     // W B W - junction - decision - to be implemented
     cmd_speed = const_motor_half_speed;
-    cmd_move = FWRD;
+    if (marxism) {
+      cmd_move = PVTL;
+    }
+    else {
+      cmd_move = FWRD;
+    }
   }
   else if (!b1 && !b2 && b3)
   {
     // W W B - pivot left
-    cmd_speed = const_motor_half_speed;
+    cmd_speed = const_motor_full_speed;//half
     cmd_move = PVTL;
   }
   else if (!b1 && !b2 && !b3)
   {
-    // W W W - junction - decision
-    cmd_speed = const_motor_half_speed;
-    cmd_move = FWRD;
+    // W W W - junction - decision - left bias?
+    if (marxism) {
+      cmd_speed = const_motor_half_speed;
+      cmd_move = PVTL;
+    }
+    else {
+      cmd_speed = const_motor_half_speed;
+      cmd_move = FWRD;
+    }
     //line_follow_complete = true;
   }
   else
@@ -1187,10 +1199,10 @@ void loop()
       cmd_move = ROTL;
       cmd_speed = 192;
       driveMotors();
-      delay(1500);
+      delay(1000);
       
       while (optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold)) {
-        cmd_move = ROTR;
+        cmd_move = ROTL;
         cmd_speed = 72;
         driveMotors();
         mqc.loop();
@@ -1199,6 +1211,7 @@ void loop()
 
       // Line found
       task_state = 2;
+      marxism = true;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
       break;
       

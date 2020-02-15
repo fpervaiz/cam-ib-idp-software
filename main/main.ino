@@ -203,41 +203,40 @@ void onMessageReceived(char *topic, byte *payload, unsigned int length)
 
     if (strcmp(buf_topic, const_topic_bot_cmd_move) == 0) {
       cmd_move = payload_val;
-      /*
+      
       Serial.print("Set cmd_move to ");
       Serial.print(cmd_move);
       Serial.print(" - received ");
       Serial.println(payload_val);
-      */
 
       mqc.publish(const_topic_bot_debug, "Set command move to:");
       mqc.publish(const_topic_bot_debug, String(cmd_move).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_speed) == 0) {
       cmd_speed = payload_val;
-      /*
+      
       Serial.print("Set cmd_speed to ");
       Serial.print(cmd_speed);
       Serial.print(" - received ");
       Serial.println(payload_val);
-      */
+      
       mqc.publish(const_topic_bot_debug, "Set command speed to:");
       mqc.publish(const_topic_bot_debug, String(cmd_speed).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_stage) == 0) {
       task_state = payload_val;
-      /*
+      
       Serial.print("Set task_state to ");
       Serial.print(task_state);
       Serial.print(" - received ");
       Serial.println(payload_val);
-      */
+      
       mqc.publish(const_topic_bot_debug, "Set task state to:");
       mqc.publish(const_topic_bot_debug, String(task_state).c_str());
     }
     else if (strcmp(buf_topic, const_topic_bot_cmd_mech) == 0) {
 
-      //Serial.println("Opening mechanism for loading");
+      Serial.println("Opening mechanism for loading");
       mqc.publish(const_topic_bot_debug, "Opening mechanism for loading");
       mech_open_cmd_recvd = true;
 
@@ -1252,19 +1251,6 @@ void loop()
       break;
       
   }
-
-  /*
-  //simpleLineFollow();
-  if (!line_follow_complete) {
-    lineFollow();
-  }
-  else {
-    // Search
-    Serial.println("Line follow complete. Beginning search and rescue.");
-    mqc.publish(const_topic_bot_debug, "Line follow complete. Beginning search and rescue.");
-    mqc.publish(const_topic_bot_stt_stage, "lf_complete");
-  }
-  */
   
   driveMotors();
 

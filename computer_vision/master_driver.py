@@ -20,8 +20,8 @@ pivot_right = 4
 rotate_left = 5
 rotate_right = 6
 
-nav_speed_low = 48
-nav_speed_high = 192
+nav_speed_low = 64
+nav_speed_high = 232
 
 bot_width = 0.40
 bot_front = 0.75
@@ -36,8 +36,11 @@ victim_upper = np.array([60, 255, 255], np.uint8)
 victim_detection_region = np.array([[230, 5],[750, 5],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
 triage_region = np.array([[810, 500], [1000, 500], [1000, 720], [810, 720]], np.int32).reshape((-1,1,2))
 
-risk_zone_upper = np.array([[500, 5],[750, 5],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
-risk_zone_lower = np.array([[500, 450],[750, 450],[750, 700],[500, 700]], np.int32).reshape((-1,1,2))
+#risk_zone_upper = np.array([[500, 5],[750, 5],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
+#risk_zone_lower = np.array([[500, 450],[750, 450],[750, 700],[500, 700]], np.int32).reshape((-1,1,2))
+
+risk_zone_upper = np.array([[450, 5],[750, 5],[750, 240],[450, 240]], np.int32).reshape((-1,1,2))
+risk_zone_lower = np.array([[450, 450],[750, 450],[750, 700],[450, 700]], np.int32).reshape((-1,1,2))
 
 victim_contour_min_area = 25
 
@@ -55,10 +58,13 @@ cmd_speed = 0
 angle_threshold = 4
 
 point_cave_exit_positioning = np.array([500, 335])
+point_cave_exit_positioning_risk = np.array([400, 335])
 point_cave_exit_line = np.array([580, 335])
 point_start_box_end = np.array([965, 10])
 #point_cave_reentry = np.array([905, 445])
-point_cave_reentry = np.array([925, 500])
+#point_cave_reentry = np.array([925, 500])
+point_cave_reentry = np.array([994, 353])
+point_cave_reentry_line = np.array([879, 340])
 
 topic_bot_cmd_stage = "/idp/bot/cmd_stage"
 topic_bot_stt_stage = "/idp/bot/stt_stage"
@@ -72,7 +78,25 @@ last_cmd_move_time = 0
 last_cmd_speed_time = 0
 transmit_interval = 10
 
+timer_started = False
+timer_start_time = 0
+time_limit = 300 # Five minutes
+elapsed_time = 0
+
 font = cv2.FONT_HERSHEY_SIMPLEX
+
+def countdown():
+    if timer_started:
+        elapsed = round(time.time()) - timer_start_time
+        remaining = time_limit - elapsed
+        mins, secs = divmod(remaining, 60)
+        timer = '{:02d}:{:02d}'.format(mins, secs)
+        if remaining < 0:
+            return "00:00", elapsed
+        else:
+            return timer, elapsed
+    else:
+        return "05:00", 0
 
 def unit_vector(vector):
     """ Returns the unit vector of the vector.  """
@@ -166,7 +190,7 @@ def on_message(client, userdata, message):
             # Load victim
             stage = 6
             
-        elif int(payload) == 7 and stage == 6:
+        elif int(payload) == 7 and stage == 6 or int(payload) == 7 and stage == 5:
             # Navigate to cave exit
             stage = 7
 
@@ -385,10 +409,12 @@ while True:
 
     if int(time.time()) - last_cmd_speed_time > transmit_interval:
         if stage in [3, 4, 7, 8, 10, 12, 13]:
+            print("\nPeriodic speed transmission")
             last_cmd_speed_time = int(time.time())
             send_speed_command(cmd_speed, force=True)
     if int(time.time()) - last_cmd_move_time > transmit_interval:
         if stage in [3, 4, 7, 8, 10, 12, 13]:
+            print("\nPeriodic move transmission")
             last_cmd_move_time = int(time.time())
             send_move_command(cmd_move, force=True)            
 
@@ -418,7 +444,7 @@ while True:
 
             orig = tuple(m1)
             if in_risk_zone(victims[0]):
-                dest = (100, victims[0][1])
+                dest = (275, victims[0][1])
                 risk_zone = True
             else:
                 dest = victims[0]
@@ -473,7 +499,11 @@ while True:
         has_cmd = "Python"
 
         orig = tuple(m1)
-        dest = victims[0]
+        try:
+            dest = victims[0]
+        except IndexError:
+            stage = 7
+            continue
 
         cv2.line(out, dest, orig, yellow, 2)
 
@@ -528,10 +558,20 @@ while True:
     elif stage == 5:
         status = "Detecting victim health"
         has_cmd = "Arduino"
+
+        if in_risk_zone(tuple(m3)):
+            risk_exit = True
+        else:
+            risk_exit = False
     
     elif stage == 6:
         status = "Loading victim"
         has_cmd = "Arduino"
+
+        if in_risk_zone(tuple(m3)):
+            risk_exit = True
+        else:
+            risk_exit = False
 
         # For next stage
         angle_control_allowed = True
@@ -541,7 +581,10 @@ while True:
         has_cmd = "Python"
 
         orig = tuple(m1)
-        dest = tuple(point_cave_exit_positioning)
+        if risk_exit:
+            dest = tuple(point_cave_exit_positioning_risk)
+        else:
+            dest = tuple(point_cave_exit_positioning)
 
         cv2.line(out, orig, dest, yellow, 2)
 
@@ -670,8 +713,8 @@ while True:
         has_cmd = "Python"
 
         #del victims[0]
-
-        if victims:
+        '''
+        if victims and elapsed_time < 240:
             # More to rescue: re-enter cave
             
             orig = tuple(m1)
@@ -699,7 +742,7 @@ while True:
                 else:
                     cmd_move = stop
 
-                    # Move to line search for line following cave reentry stage
+                    # Move to line find
                     angle_control_allowed = True
                     move_away_allowed = True
                     load_mech_opened = False
@@ -718,11 +761,11 @@ while True:
             mqc.publish(topic_bot_cmd_stage, stage)
         
         '''
-            # Go to line search
+        # Go to line search
 
-            stage = 15
-            mqc.publish(topic_bot_cmd_stage, stage)
-        '''
+        stage = 13
+        mqc.publish(topic_bot_cmd_stage, stage)
+        
 
     
     elif stage == 13:
@@ -767,7 +810,43 @@ while True:
 
     elif stage == 15:
         status = "Searching for line"
-        has_cmd = "Arduino"
+        has_cmd = "Python"
+
+        orig = tuple(m1)
+        dest = tuple(point_cave_reentry_line)
+
+        target_vector = np.array(dest) - np.array(orig)
+        angle_error = np.degrees(angle_between(target_vector, central_parallel))  
+        distance = np.linalg.norm(target_vector)
+
+        cv2.line(out, orig, dest, yellow, 2)
+
+        if angle_error > angle_threshold and angle_control_allowed:
+            cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
+            
+        else:
+            if distance > 5:#10
+                cmd_move = straight_forward
+                if distance > 50:#30
+                    cmd_speed = nav_speed_high
+                    angle_control_allowed = True
+                else:
+                    
+                    cmd_speed = nav_speed_low
+                    angle_control_allowed = False
+            else:
+                cmd_move = stop
+
+                # Return to stage 2: cave entry line follow
+                angle_control_allowed = True
+                
+                stage = 2
+                mqc.publish(topic_bot_cmd_stage, stage)
+
+        window_write_nav_info(angle_error, distance, cmd_move, cmd_speed)
+
+        send_speed_command(cmd_speed)
+        send_move_command(cmd_move)
     
     else:
         status = "Undefined"
@@ -777,6 +856,13 @@ while True:
 
     cv2.putText(out, "{} {}".format(stage, status), (50, 50), font, 0.5, red, 2, cv2.LINE_AA)
     cv2.putText(out, "{} in command".format(has_cmd), (50, 75), font, 0.5, red, 2, cv2.LINE_AA)
+
+    if not timer_started and stage > 0:
+        timer_started = True
+        timer_start_time = round(time.time())
+    
+    cdown, elapsed_time = countdown()
+    cv2.putText(out, cdown, (50, 650), font, 0.5, red, 2, cv2.LINE_AA)
 
     #frame = cv2.flip(frame, 1)
     #display_frame = cv2.resize(frame, None, fx=0.8, fy=0.8)
@@ -795,6 +881,8 @@ while True:
         stage -= 1
     elif key & 0xFF == ord('p'):
         stage += 1
+    elif key & 0xFF == ord('t'):
+        timer_started = False
     elif key & 0xFF == ord('q'):
         break
 

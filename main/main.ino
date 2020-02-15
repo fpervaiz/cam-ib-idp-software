@@ -32,6 +32,7 @@
 #define port_servo_tray 10
 
 #define const_move_indicator_period 250
+#define const_transmit_interval 10000
 
 #define const_sens_optor_l_threshold 300 // 500
 #define const_sens_optor_c_threshold 400 // 250
@@ -72,6 +73,7 @@ Servo servo_arm;
 Servo servo_tray;
 
 unsigned long prev_move_indicator_millis = 0;
+unsigned long prev_transmit_millis = 0;
 
 unsigned long temp_timestore = 0;
 int temp_time_interval;
@@ -82,6 +84,8 @@ int cmd_move_prev = cmd_move;
 
 int cmd_speed = 255;
 int cmd_speed_prev = cmd_speed;
+
+float left_correction = 1.1;
 
 bool line_follow_complete = false;
 bool mech_open_cmd_recvd = false;
@@ -594,12 +598,15 @@ void lineFollow2()
   {
     // W B W - junction - decision - to be implemented
     cmd_speed = const_motor_half_speed;
-    if (marxism) {
+    
+    /*if (marxism) {
       cmd_move = PVTL;
     }
     else {
       cmd_move = FWRD;
     }
+    */
+   cmd_move = FWRD;
   }
   else if (!b1 && !b2 && b3)
   {
@@ -610,6 +617,7 @@ void lineFollow2()
   else if (!b1 && !b2 && !b3)
   {
     // W W W - junction - decision - left bias?
+    /*
     if (marxism) {
       cmd_speed = const_motor_half_speed;
       cmd_move = PVTL;
@@ -618,6 +626,8 @@ void lineFollow2()
       cmd_speed = const_motor_half_speed;
       cmd_move = FWRD;
     }
+    */
+   cmd_move = FWRD;
     //line_follow_complete = true;
   }
   else
@@ -773,6 +783,8 @@ void setup()
   mqc.publish(const_topic_bot_debug, "Starting main loop");  
   mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
+  mqc.loop();
+
 }
 
 void loop()
@@ -805,6 +817,16 @@ void loop()
       toggleMoveIndicator();
     }
   }
+
+  // Transmit state periodically
+  /*
+  if (current_millis - prev_transmit_millis >= const_transmit_interval)
+  {
+    prev_transmit_millis = current_millis;
+    mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
+  
+  }
+  */
 
   // Check reset button
   if (resetBtnPressed()) {
@@ -961,6 +983,9 @@ void loop()
     case 6:
       // Load victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
+
+      mqc.disconnect();
+
       cmd_speed = 48;
       cmd_move = RVRS;
       driveMotors();
@@ -1009,6 +1034,11 @@ void loop()
         mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
       }
       */
+
+      connectMqtt();
+      mqc.loop();
+      delay(500);
+
       task_state = 7;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
@@ -1070,6 +1100,8 @@ void loop()
       // Unload victim - BLOCKING CASE
       // To be implemented. Currently just waits some time.
 
+      mqc.disconnect();
+
       // Reverse
       cmd_speed = 192;
       cmd_move = RVRS;
@@ -1078,7 +1110,7 @@ void loop()
       cmd_move = STOP;
       driveMotors();
 
-      delay(1000);
+      delay(500);
 
       // Servos
 
@@ -1111,6 +1143,11 @@ void loop()
         mqc.publish(const_topic_bot_stt_drop_stage, String(task_state).c_str());
       }
       */
+
+      connectMqtt();
+      mqc.loop();
+      delay(500);     
+
       task_state = 12;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
 
@@ -1195,7 +1232,8 @@ void loop()
       }
       */
 
-      // BLOCKING
+      // BLOCKING (replaced by CV)
+      /*
       cmd_move = ROTL;
       cmd_speed = 192;
       driveMotors();
@@ -1213,6 +1251,7 @@ void loop()
       task_state = 2;
       marxism = true;
       mqc.publish(const_topic_bot_stt_stage, String(task_state).c_str());
+      */
       break;
       
   }

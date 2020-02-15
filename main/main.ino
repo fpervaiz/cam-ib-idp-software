@@ -1,4 +1,11 @@
-#include <string.h>
+/*
+main.ino is the sketch that the on-board Arduino runs, following the typical process of running setup once, then looping loop.
+We took advantage of this by running a check of all commands, as well as WiFi connectivity, in the loop command, hence continuously keeping instructions updated.
+Originally, when we made use of more sensors, all of their checks were made in the loop command as well. The project report covers how this changed over the four weeks.
+The only times this loop is 'broken' is to run the line follower script functions, which make use of their own sensor-command loops.
+*/
+
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -9,8 +16,7 @@
 
 // DEFINITIONS
 
-#define pin_sens_ultrasound_trigger 10
-#define pin_sens_ultrasound_echo 13
+// Names of pins on the Arduino that are made use of. During development, their positions were changed, so using variables was helpful.
 
 #define pin_sens_optor_l A0
 #define pin_sens_optor_c A1
@@ -94,6 +100,8 @@ bool mech_open_triggered = false;
 bool marxism = false;
 
 int task_state = 0;
+
+// Definitions for WiFi communcation, made from the laptop using computer vision, to the Arduino itself
 
 char ssid[] = "IDP_L101";
 char pass[] = ">r063W83";
@@ -277,14 +285,6 @@ void setupMqtt()
     connectMqtt();
 }
 
-// Sensor setup
-
-void setupUltrasound()
-{
-  pinMode(pin_sens_ultrasound_trigger, OUTPUT);
-  pinMode(pin_sens_ultrasound_echo, INPUT);
-}
-
 void setupDriveMotors()
 {
   AFMS.begin();
@@ -320,7 +320,7 @@ bool setupOptors()
   pinMode(pin_sens_optor_c, INPUT);
   pinMode(pin_sens_optor_r, INPUT);
 
-  // Test each optoreflector
+  // Test each optoreflector - these sensors have a built in working range, which we have defined as [const_sens_optor_working_minimum, const_sens_optor_working_maximum]
   int r1 = analogRead(pin_sens_optor_l);
   int r2 = analogRead(pin_sens_optor_c);
   int r3 = analogRead(pin_sens_optor_r);
@@ -389,8 +389,9 @@ void setupBtns()
   pinMode(pin_btn_reset, INPUT_PULLUP);
 }
 
-// Logic
+// Logic. These are short commands that are used in the loop function.
 
+// These two functions check the main two buttons - start and reset. As their scripts are run once to trigger a change of state, no debouncing is needed.
 bool startBtnPressed()
 {
   return !digitalRead(pin_btn_start);
@@ -410,6 +411,7 @@ void toggleMoveIndicator()
 {
   if (isMoving())
   {
+    // Switches state of the moving indicator light, then logs the time this happens
     digitalWrite(pin_indicator_move_led, (PinStatus)!digitalRead(pin_indicator_move_led));
     prev_move_indicator_millis = millis();
   }
@@ -419,13 +421,18 @@ void toggleMoveIndicator()
   }
 }
 
+// This is the main command for motor behaviour. It makes use of the constants defined at the start of the sketch, with global variables
+// cmd_move and cmd_speed set each time driveMotors is called.
+
 void driveMotors()
 {
+  // Only runs the function if the movement type or speed has changed since the last time driveMotors was caused. The new variables are instantly set to the previous ones in this case
   if (cmd_move != cmd_move_prev || cmd_speed != cmd_speed_prev)
   {
     cmd_move_prev = cmd_move;
     cmd_speed_prev = cmd_speed;
 
+    // A switch-case chain is used here to write the correct motor directions and speeds set by the cmd_move and cmd_speed variables.
     switch (cmd_move)
     {
     case 0: // Stop
@@ -474,6 +481,8 @@ void driveMotors()
   }
 }
 
+// Indicates whether an optic sensor is hovering over the black background of the whole board, or the off-white of the tape the robot must follow. This is used in the line follow commands defined below
+// If the analogeRead of the optic sensor is below a threshold, optoIsDark returns true. These thresholds were found experimentally for each of the three optic sensors mounted, suggesting variable sensor strength.
 bool optoIsDark(int opto_pin, int threshold)
 {
   // Serial.println(analogRead(opto_pin));
@@ -481,12 +490,16 @@ bool optoIsDark(int opto_pin, int threshold)
 
 }
 
+// The main line follower script
 void lineFollow()
 {
+
+  // Checks which of the thres sensors (left, right, centre) are dark, suggesting not hovering over a guiding line
   bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
   bool b2 = optoIsDark(pin_sens_optor_c, const_sens_optor_c_threshold);
   bool b3 = optoIsDark(pin_sens_optor_r, const_sens_optor_r_threshold);
 
+  // If all sensors are dark, the robot stops as it is 'lost', it cannot find the line.
   if (b1 && b2 && b3)
   {
     // B B B - lost
@@ -495,42 +508,56 @@ void lineFollow()
     mqc.publish(const_topic_bot_debug, "Lost.");
     delay(1000);
   }
+
+  // If just the right-hand sensor is light, this suggests the robot is veering to the lef,t so pivots hard right to stay on the line
   else if (b1 && b2 && !b3)
   {
     // B B W - pivot hard right
     cmd_speed = const_motor_full_speed;
     cmd_move = PVTR;
   }
+
+  // If just the central sensor is light, this suggests the robot is straight on the line, so cmd_move is set to FWRD
   else if (b1 && !b2 && b3)
   {
     // B W B - straight - on line
     cmd_speed = const_motor_full_speed;
     cmd_move = FWRD;
   }
+
+  // Similar to the second case, a slower pivot to the right is made if only the left-hand sensor is dark
   else if (b1 && !b2 && !b3)
   {
     // B W W - pivot right
     cmd_speed = const_motor_half_speed;
     cmd_move = PVTR;
   }
+
+  // Hard pivot to the left, as before
   else if (!b1 && b2 && b3)
   {
     // W B B - pivot hard left
     cmd_speed = const_motor_full_speed;
     cmd_move = PVTL;
   }
+
+  // If only the middle sensor is dark, and the outer two are on a line, then the robot is at a junction. The robot is now commanded to move forwar slowly until it reunites with a solid line.
   else if (!b1 && b2 && !b3)
   {
     // W B W - junction - decision - to be implemented
     cmd_speed = const_motor_half_speed;
     cmd_move = FWRD;
   }
+
+  // Pivot to the left, as before
   else if (!b1 && !b2 && b3)
   {
     // W W B - pivot left
     cmd_speed = const_motor_half_speed;
     cmd_move = PVTL;
   }
+
+  // If all the sensors read light, then the robot has hit the horizontal line that marks the end of the guided path. This causes it to stop and finish line following
   else if (!b1 && !b2 && !b3)
   {
     // W W W - junction - decision
@@ -741,17 +768,20 @@ void simpleLineFollow()
 
 // PROGRAM
 
+// The setup function is run once, starting with all the previously defined setup functions.
+
 void setup()
 {
   // Reset state
   //task_state = -1;
 
+  // Modular setup
   setupDriveMotors();
-
   beginSerial();
   setupWifi();
   setupMqtt();
 
+  // Publish a confirmation of MQTT setup
   mqc.publish(const_topic_bot_debug, " ");
   mqc.publish(const_topic_bot_debug, "-----------------------------------");
   mqc.publish(const_topic_bot_debug, "L101 Main Bot Program");
@@ -760,7 +790,6 @@ void setup()
   setupServos();  
   setupBtns();
   setupIndicators();
-  setupUltrasound();
   if (setupOptors()) {
     delay(1000);
   }
@@ -805,13 +834,17 @@ void loop()
 
   }
 
+  // Logs current time, which is used in various parts of the loop, as well as in other functions.
   unsigned long current_millis = millis();
 
-  // Solid amber during health detection otherwise blink amber 2Hz while moving
+  // Solid amber during health detection otherwise blink amber 2Hz while moving. task_state 5 indicates health detection
   if (task_state == 5 && !digitalRead(pin_indicator_move_led)) {
     digitalWrite(pin_indicator_move_led, 1);
   }
+  // If not detecting health (i.e. moving)
   else {
+
+    // Calls toggleMoveIndicator, which changes the state of the moving light given enough time has passed
     if (current_millis - prev_move_indicator_millis >= const_move_indicator_period)
     {
       toggleMoveIndicator();
@@ -839,8 +872,10 @@ void loop()
     mqc.publish(const_topic_bot_stt_stage, task_state);
   }
 
+  // This switch-case chain receives the task_state variable, which determines the overall behaviour of the robot. These are split into the modular tasks the robot must complete:
   switch (task_state) {
-    case 0:
+
+    case 0: // Starting up, disables the robot for the whole loop function until the start button is pressed. Again, not debouncing is required here - as soon as a high is detected from the start button, the loop is broken and the robot behaviour starts.
       if (startBtnPressed())
       {
         task_state = 1;
@@ -851,19 +886,20 @@ void loop()
       break;
 
     case 1:
-      // Line following to start box exit
+      // Line following to start box exit (white box to cave)
       if (!line_follow_complete) {
+        // The lineFollow function only changes command once, so it is called on a loop until line_follow_complete is set to true, then the loop is broken.
         lineFollow();
       }
       else {
-        // Reached border: drive forward to clear border
+        // Reached border: drive forward to clear border, entering cave fully
         if (cmd_move == STOP) {
           temp_timestore = millis();
           temp_time_interval = 1500;
           cmd_move = FWRD;
         }
         else {
-          // Task state increment
+          // Task state increment, moving the robot behviour directory on to the next task
           if (millis() - temp_timestore > temp_time_interval) {
             cmd_move = STOP;
 

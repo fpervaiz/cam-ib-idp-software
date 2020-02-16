@@ -1,5 +1,10 @@
 '''
-master_driver.py
+Filename: master_driver.py
+Last updated: 16/02/2020
+Authors: Faizaan Pervaiz, Puria Radmard
+
+The Python script that runs on a laptop acting as a master to the robot. Communicates with the
+robot via MQTT and takes/releases control of the robot through a stage-based process.
 '''
 
 import numpy as np

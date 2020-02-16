@@ -1,8 +1,12 @@
 /*
-main.ino is the sketch that the on-board Arduino runs, following the typical process of running setup once, then looping loop.
-We took advantage of this by running a check of all commands, as well as WiFi connectivity, in the loop command, hence continuously keeping instructions updated.
-Originally, when we made use of more sensors, all of their checks were made in the loop command as well. The project report covers how this changed over the four weeks.
-The only times this loop is 'broken' is to run the line follower script functions, which make use of their own sensor-command loops.
+Filename: main.ino
+Last updated: 16/02/2020
+Authors: Faizaan Pervaiz, Puria Radmard
+
+The sketch that the on-board Arduino runs, following the typical process of running 
+setup once, then looping loop. We took advantage of this by running a check of all commands, 
+as well as MQTT connectivity, in the loop command, hence continuously keeping instructions 
+updated. The only times this loop is 'broken' is to run the servos.
 */
 
 
@@ -16,7 +20,7 @@ The only times this loop is 'broken' is to run the line follower script function
 
 // DEFINITIONS
 
-// Names of pins on the Arduino that are made use of. During development, their positions were changed, so using variables was helpful.
+// Names of pins on the Arduino that are made use of. During development, their positions were changed, so using definitions was helpful.
 
 #define pin_sens_optor_l A0
 #define pin_sens_optor_c A1
@@ -91,13 +95,10 @@ int cmd_move_prev = cmd_move;
 int cmd_speed = 255;
 int cmd_speed_prev = cmd_speed;
 
-float left_correction = 1.1;
-
 bool line_follow_complete = false;
 bool mech_open_cmd_recvd = false;
 bool mech_ready_to_pickup = false;
 bool mech_open_triggered = false;
-bool marxism = false;
 
 int task_state = 0;
 
@@ -117,6 +118,8 @@ PubSubClient mqc(net);
 
 void beginSerial()
 {
+  // Initialises serial output over USB
+
   Serial.begin(9600);
   Serial.println(F("-----------------------------------------"));
   Serial.println(" ");
@@ -153,10 +156,8 @@ void setupWifi()
         delay(3000);
     }
 
-    // you're connected now, so print out the data:
+    // Connected
     Serial.println("Connected to WiFi.");
-    //printCurrentNet();
-    //printWifiData();
 }
 
 // MQTT functions
@@ -175,6 +176,8 @@ void onMqttConnectActions() {
 
 void onMessageReceived(char *topic, byte *payload, unsigned int length)
 {
+    // Handles all incoming messages on subscribed topics
+
     Serial.print("Message arrived [");
     Serial.print(topic);
 
@@ -319,7 +322,10 @@ bool setupOptors()
   pinMode(pin_sens_optor_c, INPUT);
   pinMode(pin_sens_optor_r, INPUT);
 
-  // Test each optoreflector - these sensors have a built in working range, which we have defined as [const_sens_optor_working_minimum, const_sens_optor_working_maximum]
+  // Test each optoreflector - these sensors have a range of outputs indicating that they are 
+  // working as required, which we have defined as 
+  // [const_sens_optor_working_minimum, const_sens_optor_working_maximum]
+
   int r1 = analogRead(pin_sens_optor_l);
   int r2 = analogRead(pin_sens_optor_c);
   int r3 = analogRead(pin_sens_optor_r);
@@ -381,7 +387,9 @@ void setupBtns()
 
 // Logic. These are short commands that are used in the loop function.
 
-// These two functions check the main two buttons - start and reset. As their scripts are run once to trigger a change of state, no debouncing is needed.
+// These two functions check the main two buttons - start and reset. 
+// As their scripts are run once to trigger a change of state, no debouncing is needed.
+
 bool startBtnPressed()
 {
   return !digitalRead(pin_btn_start);
@@ -471,8 +479,11 @@ void driveMotors()
   }
 }
 
-// Indicates whether an optic sensor is hovering over the black background of the whole board, or the off-white of the tape the robot must follow. This is used in the line follow commands defined below
-// If the analogeRead of the optic sensor is below a threshold, optoIsDark returns true. These thresholds were found experimentally for each of the three optic sensors mounted, suggesting variable sensor strength.
+// Indicates whether an optic sensor is hovering over the black background of the whole board, 
+// or the off-white of the tape the robot must follow. This is used in the line follow commands defined below
+// If the analogeRead of the optic sensor is below a threshold, optoIsDark returns true. 
+// These thresholds were found experimentally for each of the three optic sensors mounted.
+
 bool optoIsDark(int opto_pin, int threshold)
 {
   // Serial.println(analogRead(opto_pin));
@@ -480,7 +491,7 @@ bool optoIsDark(int opto_pin, int threshold)
 
 }
 
-// The main line follower script
+// The base line follower function
 void lineFollow()
 {
 
@@ -499,7 +510,7 @@ void lineFollow()
     delay(1000);
   }
 
-  // If just the right-hand sensor is light, this suggests the robot is veering to the lef,t so pivots hard right to stay on the line
+  // If just the right-hand sensor is light, this suggests the robot is veering to the left so pivots hard right to stay on the line
   else if (b1 && b2 && !b3)
   {
     // B B W - pivot hard right
@@ -572,6 +583,7 @@ void lineFollow()
   }
 }
 
+// As lineFollow() with a modified exit case (B B B)
 void lineFollow2()
 {
   bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
@@ -580,7 +592,7 @@ void lineFollow2()
 
   if (b1 && b2 && b3)
   {
-    // B B B - lost
+    // B B B - complete
     cmd_speed = const_motor_full_speed;
     cmd_move = STOP;
     Serial.println("Complete.");
@@ -613,24 +625,20 @@ void lineFollow2()
   }
   else if (!b1 && b2 && !b3)
   {
-    // W B W - junction - decision - to be implemented
+    // W B W - junction
     cmd_speed = const_motor_half_speed;
-    
-
-   cmd_move = FWRD;
+    cmd_move = FWRD;
   }
   else if (!b1 && !b2 && b3)
   {
     // W W B - pivot left
-    cmd_speed = const_motor_full_speed;//half
+    cmd_speed = const_motor_half_speed;
     cmd_move = PVTL;
   }
   else if (!b1 && !b2 && !b3)
   {
-    // W W W - junction - decision - left bias?
-    
-   cmd_move = FWRD;
-    //line_follow_complete = true;
+    // W W W - junction    
+    cmd_move = FWRD;
   }
   else
   {
@@ -649,6 +657,7 @@ void lineFollow2()
   }
 }
 
+// As lineFollow() with a rightward bias to exit cave
 void lineFollow3()
 {
   bool b1 = optoIsDark(pin_sens_optor_l, const_sens_optor_l_threshold);
@@ -689,7 +698,7 @@ void lineFollow3()
   }
   else if (!b1 && b2 && !b3)
   {
-    // W B W - junction - decision - to be implemented
+    // W B W - junction
     cmd_speed = const_motor_half_speed;
     cmd_move = FWRD;
   }
@@ -731,9 +740,6 @@ void lineFollow3()
 
 void setup()
 {
-  // Reset state
-  //task_state = -1;
-
   // Modular setup
   setupDriveMotors();
   beginSerial();
@@ -837,7 +843,7 @@ void loop()
     case 1:
       // Line following to start box exit (white box to cave)
       if (!line_follow_complete) {
-        // The lineFollow function only changes command once, so it is called on a loop until line_follow_complete is set to true, then the loop is broken.
+        // The lineFollow function is non-blocking, so it is called every loop until line_follow_complete is set to true.
         lineFollow();
       }
       else {
@@ -848,7 +854,7 @@ void loop()
           cmd_move = FWRD;
         }
         else {
-          // Task state increment, moving the robot behviour directory on to the next task
+          // Task state increment, moving the robot stage on to the next task
           if (millis() - temp_timestore > temp_time_interval) {
             cmd_move = STOP;
 
@@ -903,7 +909,6 @@ void loop()
     
     case 4:
       // Computer vision vector control (positioning to load)
-      //cmd_speed = const_motor_half_speed;
 
       if (mech_open_cmd_recvd && !mech_ready_to_pickup && !mech_open_triggered) {
         servo_arm.write(const_servo_pos_arm_out);
@@ -941,7 +946,6 @@ void loop()
 
     case 6:
       // Load victim - BLOCKING CASE
-      // To be implemented. Currently just waits some time.
 
       mqc.disconnect();
 
@@ -969,7 +973,6 @@ void loop()
       servo_arm.detach();
 
       servo_tray.write(const_servo_pos_tray_up);      
-      //servo_tray.attach(port_servo_tray);
 
       delay(2000);
 
@@ -1018,7 +1021,6 @@ void loop()
 
     case 11:
       // Unload victim - BLOCKING CASE
-      // To be implemented. Currently just waits some time.
 
       mqc.disconnect();
 

@@ -1,3 +1,7 @@
+'''
+master_driver.py
+'''
+
 import numpy as np
 import paho.mqtt.client as mqtt
 
@@ -6,11 +10,17 @@ import time
 
 from cv2 import aruco
 
+# Definitions
+
+## OpenCV colours
+
 red = (0, 0, 255)
 yellow = (0, 255, 255)
 green = (0, 255, 0)
 blue = (255, 0, 0)
 dark_green = (0, 128, 0)
+
+## Driving commands
 
 stop = 0
 straight_forward = 1
@@ -23,12 +33,15 @@ rotate_right = 6
 nav_speed_low = 64
 nav_speed_high = 232
 
+## Bot bounding box dimensions
+
 bot_width = 0.40
 bot_front = 0.75
 bot_rear = 0.60
 
-bot_detected = False
-angle_control_allowed = True
+## Computer vision parameters
+
+font = cv2.FONT_HERSHEY_SIMPLEX
 
 victim_lower = np.array([35, 70, 150], np.uint8)
 victim_upper = np.array([60, 255, 255], np.uint8)
@@ -36,35 +49,21 @@ victim_upper = np.array([60, 255, 255], np.uint8)
 victim_detection_region = np.array([[230, 5],[750, 5],[750, 240],[570, 240],[570, 450],[750, 450],[750, 700],[230, 700]], np.int32).reshape((-1,1,2))
 triage_region = np.array([[810, 500], [1000, 500], [1000, 720], [810, 720]], np.int32).reshape((-1,1,2))
 
-#risk_zone_upper = np.array([[500, 5],[750, 5],[750, 240],[500, 240]], np.int32).reshape((-1,1,2))
-#risk_zone_lower = np.array([[500, 450],[750, 450],[750, 700],[500, 700]], np.int32).reshape((-1,1,2))
-
 risk_zone_upper = np.array([[450, 5],[750, 5],[750, 240],[450, 240]], np.int32).reshape((-1,1,2))
 risk_zone_lower = np.array([[450, 450],[750, 450],[750, 700],[450, 700]], np.int32).reshape((-1,1,2))
 
 victim_contour_min_area = 25
 
-#victims = [(0,0), (0,0), (0,0), (0,0)]
 victims = []
-
-send_vectors = False
-stage = -1
-prev_cmd_move = -1
-prev_cmd_speed = 255
-
-cmd_move = 0
-cmd_speed = 0
-
-angle_threshold = 4
 
 point_cave_exit_positioning = np.array([500, 335])
 point_cave_exit_positioning_risk = np.array([400, 335])
 point_cave_exit_line = np.array([580, 335])
 point_start_box_end = np.array([965, 10])
-#point_cave_reentry = np.array([905, 445])
-#point_cave_reentry = np.array([925, 500])
 point_cave_reentry = np.array([994, 353])
 point_cave_reentry_line = np.array([879, 340])
+
+## Communication topics
 
 topic_bot_cmd_stage = "/idp/bot/cmd_stage"
 topic_bot_stt_stage = "/idp/bot/stt_stage"
@@ -74,6 +73,12 @@ topic_bot_cmd_move = "/idp/bot/cmd_move"
 topic_bot_cmd_speed = "/idp/bot/cmd_speed"
 topic_bot_cmd_mech = "/idp/bot/cmd_mech"
 
+## Program control variables
+
+cmd_move = 0
+cmd_speed = 0
+
+angle_threshold = 4
 last_cmd_move_time = 0
 last_cmd_speed_time = 0
 transmit_interval = 10
@@ -83,9 +88,22 @@ timer_start_time = 0
 time_limit = 300 # Five minutes
 elapsed_time = 0
 
-font = cv2.FONT_HERSHEY_SIMPLEX
+bot_detected = False
+angle_control_allowed = True
+
+send_vectors = False
+stage = -1
+prev_cmd_move = -1
+prev_cmd_speed = 255
+
+# Helper functions
+
+## Timing
 
 def countdown():
+    """Returns string countdown from five minutes and elapsed time using timer_started
+    and timer_start_time flags"""
+
     if timer_started:
         elapsed = round(time.time()) - timer_start_time
         remaining = time_limit - elapsed
@@ -98,10 +116,11 @@ def countdown():
     else:
         return "05:00", 0
 
-def unit_vector(vector):
-    """ Returns the unit vector of the vector.  """
-    return vector / np.linalg.norm(vector)
+## Navigation and vector calculations
 
+def unit_vector(vector):
+    """ Returns the unit vector of the passed vector.  """
+    return vector / np.linalg.norm(vector)
 
 def angle_between(v1, v2):
     """ Returns the angle in radians between vectors 'v1' and 'v2'::
@@ -119,8 +138,27 @@ def angle_between(v1, v2):
 
 
 def unit_cross_prod(v1, v2):
+    """Returns unit cross product vector of passed vectors v1 and v2"""
+
     return np.cross(unit_vector(v1), unit_vector(v2))
 
+def calculate_turn_command(target_vector, bot_vector, error, threshold):
+    """Determines whether the bot should turn clockwise or anticlockwise to achieve
+    desired orientation, and the turn speed based on error."""
+
+    if unit_cross_prod(target_vector, bot_vector) > 0:
+        move = rotate_right
+    else:
+        move = rotate_left
+
+    if error < (threshold * 5):
+        speed = nav_speed_low
+    else:
+        speed = nav_speed_high
+
+    return move, speed
+
+## OpenCV window control
 
 def bot_width_trackbar(val):
     global bot_width
@@ -143,14 +181,33 @@ def vic_min_area(val):
     cv2.setTrackbarPos('Rear', 'Bars', val)
 
 def print_mouse_coords(event, x, y, flags, param):
+    """Callback function that prints the co-ordinates of mouse clicks on Vision window"""
+
     if event == cv2.EVENT_LBUTTONUP:
         print([x, y])
 
+def window_write_nav_info(angle, distance, move, speed):
+    """Prints current angle and distance from target and move/speed command information
+    to top left of Vision window"""
+
+    cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
+    cv2.putText(out, "Move {} Speed {}".format(move, speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
+
+def in_risk_zone(point):
+    """Returns whether the passed point is within the blind spot 'risk zones' defined"""
+
+    return cv2.pointPolygonTest(risk_zone_lower, point, False) == 1.0 or cv2.pointPolygonTest(risk_zone_upper, point, False) == 1.0
+
+## MQTT communication
+
 def on_disconnect(client, userdata,rc=0):
-    #logging.debug("DisConnected result code "+str(rc))
+    """Stops MQTT client loop when disconnected from broker"""
+
     client.loop_stop()
     
 def on_message(client, userdata, message):
+    """Callback function that handles incoming messages, setting stage appropriately"""
+
     global stage
 
     payload = str(message.payload.decode("utf-8"))
@@ -227,24 +284,14 @@ def on_message(client, userdata, message):
         print("Set stage to {} on receiving dropped connection restate".format(payload))
 
         if stage in [3, 4, 7, 8, 10, 12, 13]:
-            # Re-command speed and move when reconnected
+            # Re-command speed and move when reconnected for synchronicity
             send_speed_command(cmd_speed, force=True)
             send_move_command(cmd_move, force=True)
 
-def calculate_turn_command(target_vector, bot_vector, error, threshold):
-    if unit_cross_prod(target_vector, bot_vector) > 0:
-        move = rotate_right
-    else:
-        move = rotate_left
-
-    if error < (threshold * 5):
-        speed = nav_speed_low
-    else:
-        speed = nav_speed_high
-
-    return move, speed
-
 def send_move_command(curr, force=False):
+    """Sends a movement command (0-6) to the Arduino if different from last
+    sent command, or if force is set to True"""
+
     global prev_cmd_move
     if (force) or (not curr == prev_cmd_move):
         mqc.publish(topic_bot_cmd_move, curr)
@@ -252,18 +299,20 @@ def send_move_command(curr, force=False):
         print("\nCommand move: {}".format(curr))
 
 def send_speed_command(curr, force=False):
+    """Sends a speed command (0-255) to the Arduino if different from last
+    sent command, or if force is set to True"""
+
     global prev_cmd_speed
     if (force) or (not curr == prev_cmd_speed):
         mqc.publish(topic_bot_cmd_speed, curr)
         prev_cmd_speed = curr
         print("\nCommand speed: {}".format(curr))
 
-def window_write_nav_info(angle, distance, move, speed):
-    cv2.putText(out, "Angle {} Distance {}".format(angle, distance), (50, 125), font, 0.5, red, 2, cv2.LINE_AA)
-    cv2.putText(out, "Move {} Speed {}".format(move, speed), (50, 150), font, 0.5, red, 2, cv2.LINE_AA)
+########################################################################################
+########## MAIN PROGRAM ##########
+########################################################################################
 
-def in_risk_zone(point):
-    return cv2.pointPolygonTest(risk_zone_lower, point, False) == 1.0 or cv2.pointPolygonTest(risk_zone_upper, point, False) == 1.0
+# Setup MQTT communications
 
 mqc = mqtt.Client("MASTER")
 mqc.connect("192.168.137.1")
@@ -274,6 +323,7 @@ mqc.loop_start()
 mqc.subscribe(topic_bot_stt_stage)
 mqc.subscribe(topic_bot_stt_drop_stage)
 
+# Optional: create bars to find colour thresholds for masking
 '''
 cv2.namedWindow('Bars')
 cv2.createTrackbar('Width', 'Bars', int(bot_width*100), 200, bot_width_trackbar)
@@ -281,15 +331,22 @@ cv2.createTrackbar('Front', 'Bars', int(bot_front*100), 200, bot_front_trackbar)
 cv2.createTrackbar('Rear', 'Bars', int(bot_rear*100), 200, bot_rear_trackbar)
 cv2.createTrackbar('Min Area', 'Bars', int(victim_contour_min_area), 200, vic_min_area)
 '''
+
+# Create OpenCV output window
+
 cv2.namedWindow('Vision')
 cv2.moveWindow('Vision', 20, 20)
 cv2.setMouseCallback('Vision', print_mouse_coords)
+
+# Start and configure capture from video camera
 
 cap = cv2.VideoCapture(0)
 
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+# Main loop
 
 while True:
     ### FRAME UPDATE ###
@@ -300,10 +357,14 @@ while True:
     
     out = frame.copy()
 
+    # Draw defined regions
+
     cv2.drawContours(out, [victim_detection_region], 0, green, 1)
     cv2.drawContours(out, [triage_region], 0, red, 1)
     cv2.drawContours(out, [risk_zone_lower], 0, red, 1)
     cv2.drawContours(out, [risk_zone_upper], 0, red, 1)
+
+    # Find victims by colour masking
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     victim = cv2.inRange(hsv, victim_lower, victim_upper)
@@ -314,7 +375,6 @@ while True:
 
     (contours, hierarchy) = cv2.findContours(victim, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    #victim_index = 0
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour)
         if area >= victim_contour_min_area:
@@ -326,7 +386,8 @@ while True:
                 distance = np.linalg.norm(np.array((Vx, Vy)) - point_cave_exit_line)
 
                 if in_risk_zone((Vx, Vy)):
-                    # Pick these up last
+                    # Victim is in 'blind spot' so pick up last regardless of distance
+
                     distance += 500
                     colour = red
                 else:
@@ -335,15 +396,17 @@ while True:
                 cv2.rectangle(out, (x, y), (x+w, y+h), colour, 3)
 
                 victims.append([Vx, Vy, distance])
+
                 if len(victims) > 4:
                     break
     
-    # Sort victims by distance and rebuild
+    # Sort victims by distance and rebuild list
+
     victims = sorted(victims, key=lambda tup: tup[2])
     for i in range(len(victims)):
         victims[i] = (victims[i][0], victims[i][1])
 
-    #print(victims)
+    # Detect bot position and orientation using Aruco marker
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
@@ -353,6 +416,8 @@ while True:
     
     if corners:
         bot_detected = True
+
+        # Vector geometry and drawing various on-screen markers
 
         c1 = corners[0][0, 0]
         c2 = corners[0][0, 1]
@@ -405,22 +470,30 @@ while True:
     else:
         bot_detected = False
     
+    
     ### DRIVING ###
+
+    # Resend speed and movement command every transmit_interval seconds to
+    # cope with disconnections
 
     if int(time.time()) - last_cmd_speed_time > transmit_interval:
         if stage in [3, 4, 7, 8, 10, 12, 13]:
             print("\nPeriodic speed transmission")
             last_cmd_speed_time = int(time.time())
             send_speed_command(cmd_speed, force=True)
+
     if int(time.time()) - last_cmd_move_time > transmit_interval:
         if stage in [3, 4, 7, 8, 10, 12, 13]:
             print("\nPeriodic move transmission")
             last_cmd_move_time = int(time.time())
             send_move_command(cmd_move, force=True)            
 
+    # Control by stage
+
     if stage == -1:
         status = "Waiting for Arduino..."
         has_cmd = "Arduino"
+    
     elif stage == 0:
         status = "Waiting for start button push..."
         has_cmd = "Arduino"
@@ -430,6 +503,7 @@ while True:
     elif stage == 1:
         status = "Bot line following - exiting start box"
         has_cmd = "Arduino"
+    
     elif stage == 2:
         status = "Bot line following - start box to cave entrance"
         has_cmd = "Arduino"
@@ -468,12 +542,6 @@ while True:
 
                 if distance > target_distance:
                     cmd_move = straight_forward
-                    '''
-                    if distance > 50:
-                        cmd_speed = nav_speed_high
-                    else:
-                        cmd_speed = nav_speed_low
-                    '''
                     cmd_speed = nav_speed_high
                 else:
                     cmd_move = stop
@@ -499,9 +567,11 @@ while True:
         has_cmd = "Python"
 
         orig = tuple(m1)
+
         try:
             dest = victims[0]
         except IndexError:
+            # No victims found! Exit cave.
             stage = 7
             continue
 
@@ -511,37 +581,37 @@ while True:
         distance = np.linalg.norm(target_vector)
         angle_error = np.degrees(angle_between(target_vector, central_parallel))
 
-        # Calibration
-        #angle_error += 10
-
         if distance < 160 and move_away_allowed:
+            # Move away before turning around
+
             cmd_speed = nav_speed_high
             cmd_move = straight_reverse
+        
         else:
             move_away_allowed = False
+
             if angle_error > angle_threshold:
                 # Turn around
-                '''
-                if unit_cross_prod(target_vector, central_parallel) > 0:
-                    cmd_move = 6  # Clockwise - rotate right
-                else:
-                    cmd_move = 5  # Anticlockwise - rotate left
-                '''
-                # cmd_move = 6
+
                 cmd_move, cmd_speed = calculate_turn_command(target_vector, central_parallel, angle_error, angle_threshold)
             
             else:
+
                 if not load_mech_opened:
-                    mqc.publish(topic_bot_cmd_mech, "Open sesame")
+                    # Lower tray and open arm for loading if not done so already
+
+                    mqc.publish(topic_bot_cmd_mech, "1")
                     load_mech_opened = True
                 
                 # Reverse towards victim for pickup
+
                 if distance > 110:
                     cmd_move = straight_reverse
                     if distance > 120:
                         cmd_speed = nav_speed_high
                     else:
                         cmd_speed = nav_speed_low
+                
                 else:
                     # Ready to pick up
                     cmd_move = stop
@@ -558,15 +628,12 @@ while True:
     elif stage == 5:
         status = "Detecting victim health"
         has_cmd = "Arduino"
-
-        if in_risk_zone(tuple(m3)):
-            risk_exit = True
-        else:
-            risk_exit = False
     
     elif stage == 6:
         status = "Loading victim"
         has_cmd = "Arduino"
+
+        # Determine whether the robot is in a blind spot prior to exiting cave
 
         if in_risk_zone(tuple(m3)):
             risk_exit = True
@@ -581,6 +648,9 @@ while True:
         has_cmd = "Python"
 
         orig = tuple(m1)
+
+        # Take wider path if in blind spot
+
         if risk_exit:
             dest = tuple(point_cave_exit_positioning_risk)
         else:
@@ -599,7 +669,7 @@ while True:
                 
             if distance > 10:
                 cmd_move = straight_forward
-                if distance > 50:#20
+                if distance > 50:
                     cmd_speed = nav_speed_high
                     angle_control_allowed = True
                 else:
@@ -639,7 +709,7 @@ while True:
                 
             if distance > 15:
                 cmd_move = straight_forward
-                if distance > 50:#20
+                if distance > 50:
                     cmd_speed = nav_speed_high
                     angle_control_allowed = True
                 else:
@@ -667,7 +737,7 @@ while True:
 
         if cv2.pointPolygonTest(triage_region, b_front_midpoint, False) == 1.0:
             # Entered triage region
-            cmd_move = stop # Unnecessary
+            cmd_move = stop
 
             # Move to reposition to unload stage
             stage = 10
@@ -712,8 +782,6 @@ while True:
         status = "Decision to continue or end"
         has_cmd = "Python"
 
-        #del victims[0]
-        '''
         if victims and elapsed_time < 240:
             # More to rescue: re-enter cave
             
@@ -758,14 +826,7 @@ while True:
             # Return to start box
             angle_control_allowed = True
             stage = 13
-            mqc.publish(topic_bot_cmd_stage, stage)
-        
-        '''
-        # Go to line search
-
-        stage = 13
-        mqc.publish(topic_bot_cmd_stage, stage)
-        
+            mqc.publish(topic_bot_cmd_stage, stage)        
 
     
     elif stage == 13:
@@ -864,26 +925,39 @@ while True:
     cdown, elapsed_time = countdown()
     cv2.putText(out, cdown, (50, 650), font, 0.5, red, 2, cv2.LINE_AA)
 
-    #frame = cv2.flip(frame, 1)
-    #display_frame = cv2.resize(frame, None, fx=0.8, fy=0.8)
-
     cv2.imshow("Vision", out)
+    
+    # Handle keypresses
 
     key = cv2.waitKey(1)
+    
     if key & 0xFF == ord('n'):
+        # Skip frame
         continue
+    
     elif key & 0xFF == ord('s'):
+        # Save frame to image
         cv2.imwrite('processed_capture_{}.png'.format(
             str(int(time.time()))), frame)
+        
     elif key & 0xFF == ord('v'):
+        # Toggle vector display
         send_vectors = not send_vectors
+    
     elif key & 0xFF == ord('o'):
+        # Increment stage by one for testing
         stage -= 1
+    
     elif key & 0xFF == ord('p'):
+        # Decrement stage by one for testing
         stage += 1
+    
     elif key & 0xFF == ord('t'):
+        # Reset timer
         timer_started = False
+    
     elif key & 0xFF == ord('q'):
+        # Exit cleanly
         break
 
 mqc.loop_stop()
